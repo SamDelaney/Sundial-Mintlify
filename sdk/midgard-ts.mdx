@@ -194,7 +194,7 @@ import { runPhaseAValidation } from 'midgard-ts';
 import type { QueuedTx, PhaseAConfig } from 'midgard-ts';
 
 const config: PhaseAConfig = {
-  minFeeA:          44,         // Cardano protocol parameter (lovelace per byte)
+  minFeeA:          44n,        // Cardano protocol parameter (lovelace per byte, bigint)
   minFeeB:          155_381n,   // Cardano protocol parameter (constant lovelace)
   expectedNetworkId: 0,         // 0 = testnet, 1 = mainnet
   cardanoNetwork:   0,
@@ -285,10 +285,10 @@ const config: InspectTransactionCborConfig = {
   cborHex: '84a400818258...', // raw Cardano transaction CBOR hex
   expectedTxIdHex: 'aabb...', // optional: verify computed hash matches
   phaseAConfig: {
-    minFeeA: 44,
-    minFeeB: 155_381n,
+    minFeeA:          44n,    // bigint — lovelace per encoded byte
+    minFeeB:          155_381n,
     expectedNetworkId: 0,
-    cardanoNetwork: 0,
+    cardanoNetwork:   0,
   },
 };
 
@@ -350,7 +350,7 @@ if (result.shape) {
 
 ## Aiken Alignment
 
-`midgard-ts` types mirror the on-chain Aiken smart contract data structures from the `onchain/aiken/` source tree. When building off-chain tooling that constructs fraud proofs or state-queue operations, use `midgard-ts` to produce correctly shaped datums and redeemers that match the Plutus V3 validators.
+`midgard-ts` types mirror the Sundial on-chain Aiken smart contract data structures. When building off-chain tooling that constructs fraud proofs or state-queue operations, use `midgard-ts` to produce correctly shaped datums and redeemers that match the Plutus V3 validators.
 
 <Tip>
   Use `midgard-ts` for building off-chain tooling that needs to validate L2 transactions before submission — for example, a custom Watcher node that checks blocks for double-spends before the challenge window closes.

@@ -1,20 +1,20 @@
 ---
-title: "Block API: Query Sundial L2 Block Data"
+title: "Block API: Query Sundial L2 Blocks and State Queue"
 sidebarTitle: "Blocks"
-description: "GET /block retrieves L2 block data including the block header, MPT root hashes, and transaction list. GET /stateQueue returns the current state queue on Cardano L1."
+description: "GET /block retrieves the transaction hashes committed to an L2 block. GET /stateQueue returns committed block headers from the Cardano L1 state queue."
 ---
 
 Two endpoints expose block-level data on the Sundial L2. Use `GET /block` to retrieve the transactions included in a specific block by its header hash, and `GET /stateQueue` to inspect the linked list of committed block headers that lives on Cardano L1. Together they give you visibility into both individual block contents and the overall progression of the L2 chain.
 
 <Note>
-  Both endpoints are available on full (monolith) nodes. `GET /stateQueue` is a full-node-only endpoint; the related `GET /stateQueue/root-unit-diagnostics` is also served by `api`-role nodes and is useful for health monitoring without the full state-queue fetch.
+  `GET /block` and `GET /stateQueue` are available on full (monolith) nodes only. The related `GET /stateQueue/root-unit-diagnostics` is also served by `api`-role nodes and is useful for health monitoring without performing a full state-queue fetch.
 </Note>
 
 ---
 
 ## GET /block — Query Block Transactions
 
-Retrieve the list of transaction hashes included in a Sundial L2 block, identified by its 56-character header hash. The node looks up the block in `BlocksTxsDB` and returns the hashes of every transaction committed to that block.
+Retrieve the list of transaction hashes included in a Sundial L2 block, identified by its 56-character header hash. The node looks up the block and returns the hashes of every transaction committed to that block.
 
 ### Query Parameters
 
@@ -41,7 +41,7 @@ curl "https://rpc.testnet.sundialprotocol.com/block?header_hash=a3f9e2b1c4d7..."
     }
     ```
 
-    Each entry in `hashes` is a 64-character hex transaction hash. An empty `hashes` array indicates a block with no transactions (an empty block). Use each hash with `GET /tx` to retrieve the full CBOR of individual transactions.
+    Each entry in `hashes` is a 64-character hex transaction hash. An empty `hashes` array indicates a block with no transactions. Use each hash with `GET /tx` to retrieve the full CBOR of individual transactions.
   </Tab>
   <Tab title="Invalid Hash (400)">
     ```json
@@ -108,7 +108,7 @@ curl "https://rpc.testnet.sundialprotocol.com/stateQueue"
 }
 ```
 
-Each entry in `headers` is a 56-character hex block header hash representing a committed block on the state queue. The list is ordered from oldest to newest as stored in the on-chain linked list.
+Each entry in `headers` is a 56-character hex block header hash representing a committed block on the state queue.
 
 <Tip>
   Cross-reference the header hashes from `GET /stateQueue` with `GET /block` to map each committed block to its constituent transactions.
@@ -171,6 +171,42 @@ curl "https://rpc.testnet.sundialprotocol.com/stateQueue/root-unit-diagnostics"
 
 ---
 
+## Operator Endpoints
+
+The following endpoints are intended for node operators and are only available on full (monolith) nodes unless noted.
+
+### GET /stateQueue/repair-root-units
+
+Burn duplicate state-queue root units when the root-unit count is greater than 1. This is a targeted repair operation — faster than a full node reset when only the root unit count is wrong. After a successful repair, the root unit count is brought to `0`; run `GET /init` once afterward to mint a fresh single root unit.
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/stateQueue/repair-root-units"
+```
+
+```json
+{ "message": "State-queue root-unit repair completed successfully!" }
+```
+
+<Warning>
+  This endpoint is lock-guarded — a concurrent reset or init operation returns `409 {"error":"Reset already in progress"}`.
+</Warning>
+
+### GET /commitment-wallet/balance
+
+Return the lovelace balance of the block-commitment operator wallet. This endpoint is available on both full nodes and `api`-role nodes and is useful for alerting when the commitment wallet is running low.
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/commitment-wallet/balance"
+```
+
+```json
+{ "lovelaceBalance": "5000000000" }
+```
+
+The balance is returned as a string to preserve full integer precision.
+
+---
+
 ## Block Lifecycle
 
 Understanding where a block sits in its lifecycle helps you interpret state-queue and block query results:
@@ -184,7 +220,7 @@ Understanding where a block sits in its lifecycle helps you interpret state-queu
 </Accordion>
 
 <Accordion title="Merged — incorporated into confirmed ledger state">
-  The block has been merged into the Sundial confirmed state. Its transactions are permanently recorded in `BlocksTxsDB` and reachable via `GET /block`.
+  The block has been merged into the Sundial confirmed state. Its transactions are permanently recorded and reachable via `GET /block`.
 </Accordion>
 
 <Info>

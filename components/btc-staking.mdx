@@ -1,7 +1,7 @@
 ---
-title: "BTC Locker: How Bitcoin Staking Works on Sundial"
+title: "BTC Locker: Bitcoin-Native Staking and Yield on Sundial"
 sidebarTitle: "BTC Staking"
-description: "The BTC Locker protocol lets you stake Bitcoin using P2WSH timelock and escrow scripts. Learn the 4-transaction lifecycle, trust model, and how yield is distributed."
+description: "Stake Bitcoin natively using P2WSH timelock and escrow scripts. Learn the 4-transaction lifecycle, trust model, and how the BTC Locker distributes yield."
 ---
 
 The BTC Locker is the Bitcoin-native staking layer at the heart of Sundial. It lets you lock BTC directly on Bitcoin's base layer — no bridges, no wrapped tokens — and earn yield from a yield provider. Your funds are secured by two Bitcoin scripts: a **Timelock (Return) script** that holds your principal until a deadline and an **Escrow script** that gives the provider a window to claim and distribute yield. After the deadline passes, you sweep both scripts in a single transaction to collect principal plus any distributed yield.

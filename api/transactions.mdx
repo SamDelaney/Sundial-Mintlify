@@ -1,7 +1,7 @@
 ---
-title: "Transaction API: Submit and Query L2 Transactions"
+title: "Transaction API: Submit and Query Sundial L2 Transactions"
 sidebarTitle: "Transactions"
-description: "POST /submit submits a hex-encoded CBOR transaction to the Sundial L2 queue. GET /tx looks up a transaction. GET /txs queries address history. "
+description: "Submit hex-encoded CBOR transactions to the Sundial L2 queue, look up individual transactions by hash, and paginate address transaction history."
 ---
 
 Three endpoints handle transactions on the Sundial L2: `POST /submit` enqueues a signed transaction for processing, `GET /tx` retrieves a single transaction by hash, and `GET /txs` returns paginated address history. Together they cover the full lifecycle of an L2 transaction from submission through confirmation.
@@ -85,7 +85,7 @@ After a successful enqueue, a background worker pool picks up the transaction fr
     The transaction hash is computed, spent inputs and produced outputs are extracted, and the transaction is validated — including a minimum fee check against `minFeeA: 44` and `minFeeB: 155381`.
   </Step>
   <Step title="Insert">
-    Valid transactions are inserted into `MempoolDB` and the stream entry is acknowledged. Invalid transactions are rejected and dead-lettered after the configured maximum delivery attempts — they do not affect other in-flight submissions.
+    Valid transactions are inserted into the mempool ledger and the stream entry is acknowledged. Invalid transactions are rejected and dead-lettered after the configured maximum delivery attempts — they do not affect other in-flight submissions.
   </Step>
 </Steps>
 

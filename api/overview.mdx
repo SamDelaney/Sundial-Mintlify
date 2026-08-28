@@ -1,10 +1,10 @@
 ---
-title: "Sundial Node API Overview and Authentication"
+title: "Sundial Node API: Overview, Auth, and All Endpoints"
 sidebarTitle: "Overview"
-description: "The Sundial node API is an HTTP RPC API for submitting transactions, querying UTxOs, and monitoring the L2. Base URL: https://rpc.testnet.sundialprotocol.com"
+description: "The Sundial node API is an unversioned RPC-style HTTP API for submitting L2 transactions, querying UTxOs and block data, and monitoring node health."
 ---
 
-The Sundial node exposes an unversioned, RPC-style HTTP API that lets you submit transactions to the L2 mempool, query UTxO and transaction history, inspect block data, and monitor node health — all without any API key or authentication for public endpoints. The testnet node is available at `https://rpc.testnet.sundialprotocol.com` and serves the full router, meaning every endpoint in this reference is reachable.
+The Sundial node exposes an unversioned, RPC-style HTTP API that lets you submit transactions to the L2 mempool, query UTxO and transaction history, inspect block data, and monitor node health — all without any API key or authentication for public endpoints. The testnet node is available at `https://rpc.testnet.sundialprotocol.com`.
 
 ## Base URL
 
@@ -23,10 +23,10 @@ The Sundial node API is RPC-style HTTP, not REST. Endpoints are named after oper
 
 ## Authentication
 
-Public read and submission endpoints require no authentication. The only endpoint that checks credentials is `POST /faucet/claims`, which uses a static bearer token handled server-side — callers on testnet do not need to supply a token themselves.
+Public read and submission endpoints require no authentication. The `POST /faucet/claims` endpoint requires a static bearer token (`Authorization: Bearer <FAUCET_API_KEY>`) — this is a server-to-server endpoint and is not intended for direct end-user access.
 
 <Note>
-  No endpoint other than `POST /faucet/claims` performs authentication or rate-limiting at the application layer. On testnet there are no rate limits enforced. Do not expose the node directly to the public internet without an external proxy in production environments.
+  No endpoint other than `POST /faucet/claims` performs authentication or rate-limiting at the application layer. On testnet there are no rate limits enforced on public endpoints. Do not expose the node directly to the public internet without an external proxy in production environments.
 </Note>
 
 ## Request Format
@@ -58,21 +58,32 @@ Validation errors return `400` with a descriptive message, and not-found conditi
 
 ## Endpoint Summary
 
-The table below lists the endpoints available on the full (monolith) node. A subset of these — health checks, `POST /submit`, and `POST /faucet/claims` — is also available on `api`-role nodes used in horizontally scaled deployments.
+The table below lists all 17 endpoints on the full (monolith) node. The **Router** column shows which deployments serve each endpoint: **full** means any node running `NODE_ROLE=all` (the default); **api** means it is also served by `NODE_ROLE=api` nodes used in horizontally scaled public deployments.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health/live` | Liveness probe — always returns `200` if the process is up |
-| `GET` | `/health/ready` | Readiness probe — checks database, Redis, and L1 provider |
-| `GET` | `/tx` | Look up a single transaction by hash |
-| `GET` | `/txs` | Query paginated address transaction history |
-| `GET` | `/utxos` | Query the current UTxO set for an address |
-| `GET` | `/block` | Query transaction hashes for a block |
-| `POST` | `/submit` | Submit a raw CBOR transaction to the L2 queue |
-| `POST` | `/faucet/claims` | Claim testnet sBTC for a preprod address |
-| `GET` | `/stateQueue` | Fetch the state-queue linked list from Cardano L1 |
-| `GET` | `/stateQueue/root-unit-diagnostics` | Report health of the state-queue root unit |
-| `GET` | `/commitment-wallet/balance` | Return the operator commitment wallet balance |
+| Method | Path | Router | Description |
+|--------|------|--------|-------------|
+| `GET` | `/health/live` | full, api | Liveness probe — always returns `200` if the process is up |
+| `GET` | `/health/ready` | full, api | Readiness probe — checks database, Redis, and L1 provider |
+| `GET` | `/tx` | full | Look up a single transaction CBOR by hash |
+| `GET` | `/txs` | full | Query paginated address transaction history |
+| `GET` | `/utxos` | full | Query the current UTxO set for an address |
+| `GET` | `/block` | full | Query transaction hashes for a block by header hash |
+| `POST` | `/submit` | full, api | Submit a raw CBOR transaction to the L2 queue |
+| `POST` | `/faucet/claims` | full, api | Claim testnet ADA for a preprod address (bearer auth required) |
+| `GET` | `/commit` | full, api | Manually trigger one block-commitment cycle (operator) |
+| `GET` | `/stateQueue` | full | Fetch the state-queue linked list from Cardano L1 |
+| `GET` | `/stateQueue/root-unit-diagnostics` | full, api | Report health of the state-queue root unit |
+| `GET` | `/stateQueue/repair-root-units` | full | Burn duplicate state-queue root units (operator) |
+| `GET` | `/commitment-wallet/balance` | full, api | Return the operator commitment wallet lovelace balance |
+| `GET` | `/init` | full | Mint the state-queue root unit and run genesis programs (operator) |
+| `GET` | `/merge` | full | Trigger merging the oldest confirmed block into confirmed state (operator) |
+| `GET` | `/reset` | full | Reset demo chain/node state — **destructive** (operator) |
+| `GET` | `/logBlocksTxsDB` | full | Log block-to-transaction counts to server logs (operator/debug) |
+| `GET` | `/logGlobals` | full | Log in-memory global state to server logs (operator/debug) |
+
+<Note>
+  `/init`, `/commit`, `/merge`, `/reset`, `/logBlocksTxsDB`, and `/logGlobals` are operator and debug endpoints. They mutate node or on-chain state and are not intended for general application use. `/reset` is destructive and not available on `api`-role nodes.
+</Note>
 
 ## Quick Start
 
@@ -115,6 +126,6 @@ If any dependency is unavailable, the response is `503` with a `failing` array i
     Query block data by header hash and inspect the state queue committed to Cardano L1.
   </Card>
   <Card title="Faucet API" icon="faucet" href="/api/faucet">
-    Claim testnet sBTC programmatically for automated testing and CI pipelines.
+    Claim testnet ADA programmatically for automated testing and CI pipelines.
   </Card>
 </CardGroup>

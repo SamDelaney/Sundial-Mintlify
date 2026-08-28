@@ -1,7 +1,7 @@
 ---
-title: "Run a Sundial Layer Node as a Block Producer"
+title: "Sundial Layer Operator: Run a Block-Producing Node"
 sidebarTitle: "Operators"
-description: "Layer Operators process L2 transactions, commit block headers to Cardano, and earn transaction fees. Learn the requirements, responsibilities, and how to get started."
+description: "Layer Operators produce L2 blocks, commit headers to Cardano L1, and earn transaction fees. Learn hardware requirements, collateral bonds, and node setup."
 ---
 
 Layer Operators are the block producers of the Sundial L2. You receive transactions from the mempool, assemble them into blocks, and commit block headers to Cardano L1 — forming the continuous chain of state that the rest of the protocol depends on. In exchange for this work, you earn transaction fees from every transaction processed during your scheduled slot. Because block production is deterministic and your staked collateral backs every block you sign, the role demands both technical reliability and economic commitment.
@@ -47,7 +47,7 @@ The Operator Toolkit provides two distinct node types. Most operators run both.
 
 <CardGroup cols={2}>
   <Card title="Sundial-Layer-Node" icon="server">
-    The L2 block-producing node. Built with TypeScript and Effect, it uses PostgreSQL for persistent state and Redis for mempool management. This is the primary node required for all Layer Operators.
+    The L2 block-producing node. It processes transactions, validates blocks, and commits block headers to Cardano L1. This is the primary node required for all Layer Operators.
   </Card>
   <Card title="Sundial-Bridge-Node" icon="arrows-left-right">
     Runs the bridge layer (Charms and/or Cardinal) to enable trustless cross-chain asset transfers between Bitcoin and the Sundial L2. Required if you intend to act as a Bridge Operator in addition to a Layer Operator.
@@ -105,6 +105,12 @@ These are minimum specifications for running a stable Layer Node. Exceeding thes
     {
       "node": {
         "endpoint": "https://rpc.testnet.sundialprotocol.com"
+      },
+      "generator": {
+        "enabled": false,
+        "maxConcurrent": 4,
+        "batchSize": 50,
+        "intervalMs": 1000
       },
       "logging": {
         "level": "info",
@@ -178,7 +184,7 @@ Bridge Node requirements differ depending on which bridging solution (Charms, Ca
     Complete reference for all Sundial-Layer-Node and Sundial-Bridge-Node CLI commands and flags.
   </Card>
   <Card title="Fraud Proofs" icon="shield-check" href="/components/fraud-proofs">
-    Understand the 27 fraud proof types that Provers use to challenge invalid blocks — and what makes a block invalid.
+    Understand the 24 fraud proof types that Provers use to challenge invalid blocks — and what makes a block invalid.
   </Card>
   <Card title="Watcher Guide" icon="eye" href="/guides/watchers">
     Many operators also run Watcher services to earn additional income and add their own layer of fraud detection.

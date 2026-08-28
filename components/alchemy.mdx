@@ -1,7 +1,7 @@
 ---
-title: "Alchemy: FIRE and ICE Bitcoin Reserve Assets"
+title: "Alchemy: FIRE and ICE Bitcoin-Backed Reserve Assets"
 sidebarTitle: "Alchemy"
-description: "Alchemy creates two Bitcoin-backed reserve assets — FIRE (high-beta BTC growth exposure) and ICE (senior BTC-backed USD-denominated claim) — built on the Charms zkVM protocol."
+description: "Alchemy splits a BTC reserve into FIRE (junior, high-beta growth) and ICE (senior, USD-denominated), enforced by Groth16 zk-SNARK proofs on Cardano."
 ---
 
 Alchemy is Sundial's Bitcoin reserve infrastructure layer. It takes a pool of BTC held in Sundial's audited Bitcoin lockers and creates two distinct, complementary assets — **FIRE** and **ICE** — from that single reserve. Every minting and redemption operation is governed by a Groth16 zk-SNARK proof verified on-chain: the reserve constraints are enforced by cryptography, not by promises. Neither asset requires bridging, wrapping, or custodians beyond what Bitcoin itself provides.

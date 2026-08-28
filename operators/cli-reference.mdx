@@ -1,5 +1,5 @@
 ---
-title: "Sundial CLI Reference: midgard Command Guide"
+title: "midgard CLI Reference: Wallets, Transactions & Node Status"
 sidebarTitle: "CLI Reference"
 description: "Full reference for the midgard CLI: wallet management, transaction submission, node status checks, and key generation for Sundial L2 operators and users."
 ---
@@ -36,16 +36,22 @@ midgard --help
 
 These flags apply to every `midgard` command and can be set as environment variables to avoid typing them on every invocation.
 
-| Flag | Environment Variable | Default | Description |
-|------|---------------------|---------|-------------|
-| `--endpoint <url>` | — | `http://localhost:3000` | Sundial node URL to connect to |
-| `--network <network>` | `SUNDIAL_NODE_NETWORK_ID` | `1` (Preprod) | `mainnet` or testnet magic number |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--endpoint <url>` | `http://localhost:3000` | Sundial node URL to connect to |
+| `--network <network>` | `1` (Preprod) | `mainnet` or testnet magic number |
 
-To point every command at the public testnet node, export the endpoint once in your shell:
+To point every command at the public testnet node without repeating `--endpoint` on each call, set the `node.endpoint` value in your manager config file (`demo/midgard-manager/config/settings.json`):
 
-```bash
-export SUNDIAL_NODE_ENDPOINT=https://rpc.testnet.sundialprotocol.com
+```json
+{
+  "node": {
+    "endpoint": "https://rpc.testnet.sundialprotocol.com"
+  }
+}
 ```
+
+Alternatively, pass `--endpoint https://rpc.testnet.sundialprotocol.com` with each command.
 
 ## Wallet Commands
 

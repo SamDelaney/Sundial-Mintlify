@@ -1,7 +1,7 @@
 ---
-title: "State Queue: How Block Commitments Work on L1"
+title: "State Queue: Sundial L2 Block Commitments on Cardano"
 sidebarTitle: "State Queue"
-description: "The State Queue is a Cardano smart contract that stores Sundial L2 block headers as a linked list. Operators commit blocks, watchers challenge them, and valid blocks reach finality."
+description: "The State Queue holds Sundial L2 block headers on Cardano. Operators commit blocks, watchers challenge invalid ones, and valid blocks finalize permanently."
 ---
 
 The State Queue is the on-chain backbone of Sundial's Layer 2. It is a Cardano smart contract that maintains a linked list of committed L2 block headers, ordered from oldest to newest. Operators submit new headers to the tail of the queue; confirmed headers at the head merge into the permanent **Confirmed State** UTxO. Between those two endpoints sits the maturity window — the period during which any network participant can inspect a block and submit a fraud proof if something is wrong.
@@ -123,11 +123,13 @@ The Escape Hatch exists to protect you even in scenarios where all operators are
 Archivists expose a simple API for accessing historical block data:
 
 ```
-GET /block/{blockHeight}          – Full block (header + body)
-GET /block/{blockHeight}/header   – Header only
-GET /block/{blockHeight}/body     – Body only
-GET /blocks?from={n}&to={m}       – Range of blocks
-GET /block/{blockHash}            – Block by hash
+GET /block/{blockHeight}                        – Full block (header + body)
+GET /block/{blockHeight}/header                 – Header only
+GET /block/{blockHeight}/body                   – Body only
+GET /blocks?from={startHeight}&to={endHeight}   – Range of blocks
+GET /block/{blockHash}                          – Full block by hash
+GET /block/{blockHash}/header                   – Header by hash
+GET /block/{blockHash}/body                     – Body by hash
 ```
 
 You do not need to run an Archivist to use Sundial — wallets and indexers handle DA access for you. If you want to run your own node for additional verifiability, see the [Watchers guide](/guides/watchers).

@@ -1,13 +1,13 @@
 ---
-title: "Stake Bitcoin on Sundial and Earn Yield"
+title: "Stake Bitcoin on Sundial Protocol and Earn Yield"
 sidebarTitle: "Stake BTC"
 description: "Lock Bitcoin using Sundial's BTC Locker protocol to earn yield. Learn the 4-transaction lifecycle, fee structure, and how to monitor your staking position."
 ---
 
-Sundial's BTC staking protocol locks your Bitcoin into a pair of on-chain Bitcoin scripts — a **P2WSH timelock** and an **escrow** — to earn yield from a verified yield provider. The scripts enforce your ownership rights at the Bitcoin protocol level: once the staking deadline passes, only you can withdraw. Staking takes four on-chain Bitcoin transactions across its full lifecycle, from your initial deposit to your final withdrawal.
+Sundial's BTC staking protocol locks your Bitcoin into a pair of on-chain Bitcoin scripts — a **timelock** and an **escrow** — to earn yield from a verified yield provider. The scripts enforce your ownership rights at the Bitcoin protocol level: once the staking deadline passes, only you can withdraw. Staking takes four on-chain Bitcoin transactions across its full lifecycle, from your initial deposit to your final withdrawal.
 
 <Note>
-  BTC staking uses real Bitcoin script enforcement for principal protection, but the yield arrangement is governed by an agreement with the yield provider. Sundial's escrow script ensures you can always reclaim your principal after the deadline, regardless of provider behavior.
+  BTC staking is **custodial**: the yield provider takes custody of the escrowed funds during the staking period. Principal protection comes from the escrow script's post-deadline spending path, which only your key can authorize. The yield arrangement itself is governed by your agreement with the provider.
 </Note>
 
 ## Prerequisites

@@ -1,20 +1,28 @@
 ---
-title: "Faucet API: Claim Testnet sBTC Programmatically"
+title: "Faucet API: Claim Testnet ADA on Cardano Preprod Network"
 sidebarTitle: "Faucet API"
-description: "POST /faucet/claims sends testnet sBTC to a Cardano preprod address. Accepts a bech32 address and returns a transaction ID. Includes structured error responses."
+description: "POST /faucet/claims funds a Cardano preprod address with testnet ADA. Requires a bearer token and returns a transaction hash with structured error codes."
 ---
 
-The faucet API lets you claim testnet sBTC programmatically, making it straightforward to fund addresses in automated test suites, CI pipelines, and integration scripts without visiting the web UI. Supply a Cardano preprod address, and the faucet submits an on-chain transaction to fund it. All tokens dispensed by the faucet are testnet-only and carry no real-world value.
+The faucet API lets you claim testnet ADA programmatically, making it straightforward to fund addresses in automated test suites, CI pipelines, and integration scripts. Supply a Cardano preprod address and your bearer token, and the faucet submits an on-chain transaction to fund it. All tokens dispensed by the faucet are testnet-only and carry no real-world value.
 
 <Warning>
-  The faucet is a testnet-only service. Claims are subject to per-address and per-IP cooldowns to prevent abuse. Do not rely on the faucet for high-frequency automated funding — pre-fund a set of test wallets at the start of a test run instead.
+  The faucet is a testnet-only, server-to-server endpoint protected by a bearer token. Claims are subject to per-address and per-IP cooldowns to prevent abuse. Do not rely on the faucet for high-frequency automated funding — pre-fund a set of test wallets at the start of a test run instead.
 </Warning>
 
 ---
 
-## POST /faucet/claims — Claim Testnet sBTC
+## POST /faucet/claims — Claim Testnet ADA
 
-Submit a claim request for testnet sBTC. The faucet validates the address, checks cooldown and IP limits, builds a funding transaction, and returns the transaction hash once the transaction is submitted to Cardano preprod.
+Submit a claim request for testnet ADA. The faucet validates the address, checks cooldown and IP limits, builds a funding transaction, and returns the transaction hash once the transaction is submitted to Cardano preprod.
+
+### Request
+
+```http
+POST /faucet/claims
+Authorization: Bearer <FAUCET_API_KEY>
+Content-Type: application/json
+```
 
 ### Request Body
 
@@ -22,20 +30,20 @@ Submit a claim request for testnet sBTC. The faucet validates the address, check
 {
   "address": "addr_test1qp...",
   "idempotencyKey": "my-test-run-001",
-  "ipHash": "<server-generated>"
+  "ipHash": "<hashed-ip>"
 }
 ```
 
 <ParamField body="address" type="string" required>
-  Bech32 Cardano testnet address to receive the sBTC. Must start with `addr_test1`, must carry a valid payment credential, must not be a script address, and must be a preprod (testnet) network address.
+  Bech32 Cardano testnet address to receive the ADA. Must start with `addr_test1`, must carry a valid payment credential, must not be a script address, and must be a preprod (testnet) network address.
 </ParamField>
 
 <ParamField body="idempotencyKey" type="string" required>
   A unique string identifying this claim request. Resending the same `idempotencyKey` for the same address is safe — the faucet returns the original result rather than triggering a second transaction. Use a value that is stable across retries, such as a test run ID or a UUID generated at the start of your pipeline.
 </ParamField>
 
-<ParamField body="ipHash" type="string">
-  A hashed representation of the requester's IP address, used for per-IP rate limiting. This field is handled server-side when you go through the web frontend proxy. When calling the API directly, include an empty string or omit the field — the server-side proxy at `sundialprotocol.com` populates it automatically.
+<ParamField body="ipHash" type="string" required>
+  A non-empty string representing the requester's IP address (typically a hash). Used for per-IP daily rate limiting. When integrating through the Sundial web frontend, the proxy populates this field automatically. When calling the API directly, pass a consistent identifier for the originating IP.
 </ParamField>
 
 ### Example
@@ -44,10 +52,12 @@ Submit a claim request for testnet sBTC. The faucet validates the address, check
 
 ```bash cURL
 curl -X POST https://rpc.testnet.sundialprotocol.com/faucet/claims \
+  -H "Authorization: Bearer <FAUCET_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "address": "addr_test1qp...",
-    "idempotencyKey": "my-test-run-001"
+    "idempotencyKey": "my-test-run-001",
+    "ipHash": "a1b2c3d4e5f6..."
   }'
 ```
 
@@ -56,10 +66,14 @@ const response = await fetch(
   "https://rpc.testnet.sundialprotocol.com/faucet/claims",
   {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Authorization": `Bearer ${process.env.FAUCET_API_KEY}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
       address: "addr_test1qp...",
       idempotencyKey: `test-run-${Date.now()}`,
+      ipHash: "a1b2c3d4e5f6...",
     }),
   }
 );
@@ -137,13 +151,16 @@ The `nextEligibleAt` field is only present for `COOLDOWN` responses.
 ### Error Handling Example
 
 ```typescript
-async function claimFaucet(address: string, runId: string): Promise<void> {
+async function claimFaucet(address: string, runId: string, ipHash: string): Promise<void> {
   const res = await fetch(
     "https://rpc.testnet.sundialprotocol.com/faucet/claims",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, idempotencyKey: runId }),
+      headers: {
+        "Authorization": `Bearer ${process.env.FAUCET_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ address, idempotencyKey: runId, ipHash }),
     }
   );
 
@@ -184,7 +201,7 @@ Using a stable `idempotencyKey` makes the faucet safe to call multiple times in 
     Create an idempotency key that is unique to this logical claim but stable across retries. A test run ID, a UUID generated once at startup, or a hash of `address + testRunId` all work well.
   </Step>
   <Step title="Call the faucet">
-    POST the claim. On a `200` response, store `nextEligibleAt` and proceed with your test.
+    POST the claim with your bearer token. On a `200` response, store `nextEligibleAt` and proceed with your test.
   </Step>
   <Step title="Retry on transient failures">
     On `VALIDATION_FAILED` or `INTERNAL` errors, retry with the **same** `idempotencyKey`. The faucet deduplicates by key, so even if the first attempt partially succeeded, the retry will either return the original result or trigger a fresh transaction safely.
@@ -205,5 +222,5 @@ If you prefer to claim tokens manually rather than programmatically, use the tes
 The web UI provides the same tokens as the API and shows your current cooldown status and estimated next eligible claim time.
 
 <Info>
-  The faucet dispenses testnet sBTC (simulated BTC) on the Cardano preprod network. These tokens are used for testing Sundial L2 transactions and the BTC staking flow. They have no monetary value and cannot be transferred to mainnet.
+  The faucet dispenses testnet ADA on the Cardano preprod network. These tokens are used for testing Sundial L2 transactions and covering transaction fees. They have no monetary value and cannot be transferred to mainnet.
 </Info>

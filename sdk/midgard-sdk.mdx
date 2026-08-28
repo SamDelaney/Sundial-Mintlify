@@ -1,5 +1,5 @@
 ---
-title: "Midgard SDK: TypeScript Library for Sundial L2"
+title: "Midgard SDK: Build Sundial L2 Transactions in TypeScript"
 sidebarTitle: "Midgard SDK"
 description: "The official TypeScript SDK for Sundial L2. Build deposits, withdrawals, tx orders, and fraud proofs using Effect and Lucid Evolution."
 ---
@@ -104,19 +104,21 @@ const lucid = await Lucid(
 );
 lucid.selectWallet.fromSeed(process.env.WALLET_SEED);
 
-// Fetch the Hub Oracle to get policy IDs and the deposit validator address
-const hubOracle = await SDK.fetchHubOracle(lucid, {
-  hubOracleAddress: 'addr_test1...',
+// Fetch the Hub Oracle UTxO to read protocol policy IDs and validator addresses
+const hubOracleUtxo = await SDK.fetchHubOracleUTxO(lucid, {
+  hubOracleAddress:  'addr_test1...', // Hub Oracle validator address
+  hubOraclePolicyId: 'abc123...',     // Hub Oracle NFT policy ID
 });
+const datum = hubOracleUtxo.datum; // HubOracleDatum
 
 // Build the unsigned deposit transaction
 const unsignedTx = await SDK.unsignedDepositTx(lucid, {
-  depositScriptAddress: hubOracle.depositScriptAddress,
-  mintingPolicy:        hubOracle.depositMintingPolicy,
-  policyId:             hubOracle.depositPolicyId,
-  depositAmount:        5_000_000n, // 5 ADA in lovelace
+  depositScriptAddress: datum.depositAddr,
+  mintingPolicy:        { type: 'PlutusV3', script: '...' }, // deposit minting policy script
+  policyId:             datum.deposit,
+  depositAmount:        5_000_000n,                           // 5 ADA in lovelace
   depositInfo: {
-    l2_address: new TextEncoder().encode('addr_test1...'), // your L2 address bytes
+    l2_address: new TextEncoder().encode('addr_test1...'),    // your L2 address bytes
     l2_datum:   undefined,
   },
 });
@@ -140,17 +142,17 @@ import * as SDK from '@al-ft/midgard-sdk';
 
 // Fetch current withdrawal UTxOs to confirm none are already pending for your address
 const existingWithdrawals = await SDK.fetchWithdrawalUTxOs(lucid, {
-  withdrawalScriptAddress: hubOracle.withdrawalScriptAddress,
-  eventPolicyId: hubOracle.withdrawalPolicyId,
+  withdrawalScriptAddress: datum.withdrawalAddr,
+  eventPolicyId:           datum.withdrawal,
 });
 
 // Build the unsigned withdrawal transaction
 const unsignedTx = await SDK.unsignedWithdrawalTx(lucid, {
-  withdrawalScriptAddress: hubOracle.withdrawalScriptAddress,
-  mintingPolicy:           hubOracle.withdrawalMintingPolicy,
-  policyId:                hubOracle.withdrawalPolicyId,
+  withdrawalScriptAddress: datum.withdrawalAddr,
+  mintingPolicy:           { type: 'PlutusV3', script: '...' }, // withdrawal minting policy script
+  policyId:                datum.withdrawal,
   withdrawalInfo: {
-    l2_outref: myL2Utxo.outRef,
+    l2_outref:  myL2Utxo.outRef,
     l1_address: new TextEncoder().encode('addr_test1...'), // L1 destination address bytes
     l1_datum:   undefined,
   },
@@ -172,9 +174,9 @@ import * as SDK from '@al-ft/midgard-sdk';
 const l2TxCbor = '84a400818258...';
 
 const unsignedTx = await SDK.unsignedTxOrderTx(lucid, {
-  txOrderScriptAddress: hubOracle.txOrderScriptAddress,
-  mintingPolicy:        hubOracle.txOrderMintingPolicy,
-  policyId:             hubOracle.txOrderPolicyId,
+  txOrderScriptAddress: datum.txOrderAddr,
+  mintingPolicy:        { type: 'PlutusV3', script: '...' }, // tx-order minting policy script
+  policyId:             datum.txOrder,
   l2Transaction:        l2TxCbor,
 });
 
@@ -189,33 +191,40 @@ Check which operator is currently scheduled to produce blocks before submitting 
 
 ```typescript
 import * as SDK from '@al-ft/midgard-sdk';
+import { Effect } from 'effect';
 
-const schedulerState = await SDK.fetchSchedulerState(lucid, {
-  schedulerAddress: hubOracle.schedulerAddress,
-  schedulerPolicyId: hubOracle.schedulerPolicyId,
-});
+// fetchSchedulerUTxOProgram returns an Effect; run it with Effect.runPromise
+const schedulerUtxo = await Effect.runPromise(
+  SDK.fetchSchedulerUTxOProgram(lucid, {
+    schedulerAddress:  datum.schedulerAddr,
+    schedulerPolicyId: datum.scheduler,
+  })
+);
 
-console.log('Current operator:', schedulerState.activeOperator);
-console.log('Block window ends:', new Date(Number(schedulerState.windowEnd)));
+console.log('Scheduler UTxO:', schedulerUtxo);
 ```
 
 ### Submitting a Fraud Proof
 
-Fraud proofs challenge invalid blocks committed to the state queue. The SDK exposes the first step of each multi-step fraud proof program.
+Fraud proofs challenge invalid blocks committed to the state queue. The SDK exposes multi-step `incomplete*TxProgram` builders for each fraud proof type — wire the `Effect` result into your Effect pipeline and complete the transaction with your wallet.
 
 ```typescript
 import * as SDK from '@al-ft/midgard-sdk';
+import { Effect } from 'effect';
 
-// Step 0 of a double-spend fraud proof
-const unsignedTx = await SDK.unsignedDoubleSpendFraudProofStep0Tx(lucid, {
-  fraudProofCatalogueAddress:  hubOracle.fraudProofCatalogueAddress,
-  fraudProofCataloguePolicyId: hubOracle.fraudProofCataloguePolicyId,
-  stateQueueAddress:           hubOracle.stateQueueAddress,
+// Build the first step of a fraud proof computation thread
+const program = SDK.incompleteFraudProofComputationThreadInitTxProgram(lucid, {
+  fraudProofCatalogueAddress:  datum.fraudProofCatalogueAddr,
+  fraudProofCataloguePolicyId: datum.fraudProofCatalogue,
+  fraudProofMintingPolicy:     { type: 'PlutusV3', script: '...' },
+  stateQueueAddress:           datum.stateQueueAddr,
   disputedBlockUtxo:           invalidBlockUtxo,
-  fraudProofMintingPolicy:     hubOracle.fraudProofMintingPolicy,
 });
 
-const signedTx = await unsignedTx.sign.withWallet().complete();
+const txBuilder = await Effect.runPromise(program);
+const signedTx = await (await txBuilder.complete({ localUPLCEval: false }))
+  .sign.withWallet()
+  .complete();
 await signedTx.submit();
 ```
 

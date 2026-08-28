@@ -1,7 +1,7 @@
 ---
 title: "Sundial Node Configuration: L1 Provider, Network & Timing"
 sidebarTitle: "Configuration"
-description: "Configure the Sundial node via environment variables: L1 provider, network, operator credentials, block timing, Redis, PostgreSQL, and monitoring settings."
+description: "Reference for all Sundial node environment variables: L1 provider, network, operator wallets, timing intervals, PostgreSQL, Redis, and Prometheus metrics."
 ---
 
 The Sundial node reads all of its configuration from environment variables at startup. No flags or command-line arguments are required for the core settings — everything lives in a `.env` file that you create from the provided example. This reference covers every variable that operators need to control: your Cardano L1 provider, network selection, operator credentials, block production timing, Redis and PostgreSQL connection details, and the monitoring stack.
@@ -92,7 +92,6 @@ L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX="word1 word2 word3 ... word24"
 | `NODE_ROLE` | No | `all` | Node role: `all`, `api`, `tx-processor`, or `sequencer` |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection URL |
 | `PROM_METRICS_PORT` | No | `9464` | Prometheus metrics exporter port |
-| `OLTP_EXPORTER_URL` | No | `http://0.0.0.0:4318/v1/traces` | OpenTelemetry trace exporter URL |
 
 ## PostgreSQL Connection
 
@@ -133,44 +132,28 @@ These variables control the intervals at which the node's background fibers run.
 
 | Variable | Default | Unit | Description |
 |----------|---------|------|-------------|
-| `WAIT_BETWEEN_BLOCK_COMMITMENTS` | `500` | ms | Delay between block-commitment fiber runs |
-| `WAIT_BETWEEN_BLOCK_SUBMISSIONS` | `1000` | ms | Delay between block-submission fiber runs |
-| `WAIT_BETWEEN_USER_EVENT_FETCHES` | `11000` | ms | Interval for polling L1 deposits and withdrawals |
+| `WAIT_BETWEEN_BLOCK_COMMITMENTS` | `1000` | ms | Delay between block-commitment fiber runs |
+| `WAIT_BETWEEN_BLOCK_SUBMISSIONS` | `10000` | ms | Delay between block-submission fiber runs |
+| `WAIT_BETWEEN_USER_EVENT_FETCHES` | `10000` | ms | Interval for polling L1 deposits and withdrawals |
 | `WAIT_BETWEEN_MERGE_TXS` | `10000` | ms | Delay between state-queue merge fiber runs |
 
 <Info>
   `WAIT_BETWEEN_BLOCK_COMMITMENTS` controls how frequently the sequencer tries to build a new block from the mempool. Lower values mean more frequent (and smaller) blocks; higher values let the mempool fill for larger, more efficient batches.
 </Info>
 
-## Block Commitment Limits
-
-These variables let you tune how the sequencer batches transactions into blocks:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `COMMITMENT_MAX_TX_REQUESTS_PER_BLOCK` | `2000` | Maximum transaction requests included in a single block |
-| `COMMITMENT_MIN_TX_REQUESTS_PER_BLOCK` | `1` | Minimum transactions before the sequencer forces a commitment |
-| `COMMITMENT_MAX_WAIT_MS` | `0` | Maximum time to wait for the minimum batch size before committing anyway (`0` = commit immediately) |
-| `COMMITMENT_WORKER_TIMEOUT_MS` | `300000` | Timeout for the commitment worker thread (5 minutes) |
-
 ## Transaction Queue (Redis)
 
-The node uses Redis Streams to decouple transaction receipt from mempool processing. These variables configure the stream behavior:
+The node uses Redis to decouple transaction receipt from mempool processing. Set `REDIS_URL` to point at your Redis instance:
 
 ```env
 REDIS_URL=redis://redis:6379
-REDIS_STREAM_KEY=midgard:tx-submissions
-REDIS_STREAM_CONSUMER_GROUP=midgard-tx-processors
 ```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REDIS_URL` | `redis://redis:6379` | Redis connection URL |
-| `REDIS_STREAM_KEY` | `midgard:tx-submissions` | Stream name for submitted transactions |
-| `TX_QUEUE_DRAIN_BATCH_SIZE` | `100` | Number of messages the processor claims per batch |
-| `TX_QUEUE_PROCESSOR_INTERVAL_MS` | `250` | Polling interval for the drain loop |
-| `TX_PARSE_CONCURRENCY` | `8` | Parallel workers for deserializing transactions |
-| `TX_QUEUE_MAX_DELIVERY_ATTEMPTS` | `5` | Attempts before moving a message to the dead-letter stream |
+
+When running with Docker Compose, Redis is included in the stack and `REDIS_URL` defaults to `redis://redis:6379`. For external Redis instances, update the host and port accordingly.
 
 ## Monitoring and Observability
 
@@ -178,24 +161,15 @@ Monitoring is activated by starting the node with the `--with-monitoring` flag. 
 
 ```env
 PROM_METRICS_PORT=9464
-OLTP_EXPORTER_URL=http://tempo:4318/v1/traces
 ```
-
-<Note>
-  The trace exporter variable is spelled `OLTP_EXPORTER_URL` (not `OTLP`) in the current implementation. This matches the variable name in `.env.example` and the config loader in `config.ts`.
-</Note>
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PROM_METRICS_PORT` | `9464` | Port for the Prometheus `/metrics` scrape endpoint |
-| `OLTP_EXPORTER_URL` | `http://0.0.0.0:4318/v1/traces` | OTLP HTTP endpoint for trace export |
 
-When running the split-role deployment, each role can expose its own metrics port:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_TX_PROCESSOR_PROM_HOST_PORT` | `9466` | Host-side metrics port for the tx-processor container |
-| `NODE_SEQUENCER_PROM_HOST_PORT` | `9467` | Host-side metrics port for the sequencer container |
+<Tip>
+  When running the `monolith` Docker Compose profile, `--with-monitoring` is passed automatically and Prometheus scrapes metrics from `PROM_METRICS_PORT`. See the [Layer Node deployment guide](/operators/layer-node) for the full list of observability service endpoints.
+</Tip>
 
 ## Manager Configuration File
 
@@ -258,7 +232,6 @@ POSTGRES_HOST=postgres
 
 # Monitoring
 PROM_METRICS_PORT=9464
-OLTP_EXPORTER_URL=http://tempo:4318/v1/traces
 ```
 
 ## Related Pages

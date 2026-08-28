@@ -1,7 +1,7 @@
 ---
-title: "Deploy a Sundial Layer Node: Docker & Nix Guide"
+title: "Deploy a Sundial Layer Node: Docker, Nix & Monitoring"
 sidebarTitle: "Layer Node"
-description: "Run the Sundial-Layer-Node as a block producer on the Sundial L2. Covers Docker Compose setup, split node roles, smoke checks, and Grafana monitoring."
+description: "Deploy the Sundial Layer Node with Docker Compose or Nix. Configure node roles, start the Grafana observability stack, and verify your node is healthy."
 ---
 
 The Sundial-Layer-Node is the production TypeScript node that processes L2 transactions and commits block headers to Cardano. It handles everything from receiving raw transactions over HTTP and validating them against the mempool, to batching them into blocks and submitting signed block-header commitments to the Cardano L1 state queue. You can run the node as a single all-in-one process (the default) or deploy each role in its own container for horizontal scaling and fault isolation.
@@ -97,10 +97,16 @@ The fastest way to run a node is with the bundled Docker Compose stack, which st
     docker compose ps
     ```
 
-    Then probe the node's API and state queue:
+    Then probe the node's health and API endpoints:
 
     ```bash
-    # Check the state queue endpoint
+    # Liveness probe — returns 200 as soon as the process is up
+    curl -fsS http://localhost:3000/health/live
+
+    # Readiness probe — checks DB, Redis, and L1 provider
+    curl -fsS http://localhost:3000/health/ready
+
+    # State queue endpoint — confirms full API is serving requests
     curl -fsS http://localhost:3000/stateQueue
     ```
 
@@ -117,12 +123,22 @@ The fastest way to run a node is with the bundled Docker Compose stack, which st
 Run these checks after startup to confirm the full stack is healthy.
 
 <Steps>
-  <Step title="Confirm the node API is reachable">
+  <Step title="Confirm the node is live and ready">
+    ```bash
+    # Liveness probe — a 200 means the process is running
+    curl -fsS http://localhost:3000/health/live
+
+    # Readiness probe — a 200 means DB, Redis, and L1 provider are all connected
+    curl -fsS http://localhost:3000/health/ready
+    ```
+
+    Once the node is ready, confirm the API is serving requests:
+
     ```bash
     curl -fsS http://localhost:3000/stateQueue
     ```
 
-    A JSON response with state-queue data means the node is accepting requests.
+    A JSON response with state-queue data confirms the node is fully operational.
   </Step>
 
   <Step title="Confirm Prometheus is scraping">
@@ -150,7 +166,7 @@ When you start the node with the `monolith` Docker Compose profile, the `--with-
 | Grafana | `http://localhost:3001` | Dashboards, logs (Loki), and traces (Tempo) |
 | Loki | `http://localhost:3100` | Log aggregation via Promtail |
 | Tempo | `http://localhost:3200` | Distributed trace storage and querying |
-| cAdvisor | `http://localhost:8081` | Container resource metrics |
+| cAdvisor | `http://localhost:8080` | Container resource metrics |
 
 The node exposes these tracked metrics:
 
@@ -194,7 +210,7 @@ Each role container reads `NODE_ROLE` from the environment override in the Compo
 
 ## Nix Deployment
 
-If you prefer a reproducible Nix-based build instead of Docker, use the flake in the `demo/` directory:
+If you prefer a reproducible Nix-based build, clone the standalone node repository and build from the tagged release:
 
 ```bash
 # Clone the repository
@@ -231,7 +247,7 @@ nix build .#sundial-layer-node
   </Accordion>
 
   <Accordion title="Port conflicts on startup">
-    The stack uses ports `3000`, `3001`, `3100`, `3200`, `4317`, `4318`, `5433`, `6379`, `8081`, `9090`, and `9464`. Stop any existing services on those ports, or override them in `.env` using the `_HOST_PORT` variable variants.
+    The stack uses ports `3000`, `3001`, `3100`, `3200`, `4317`, `4318`, `5433`, `6379`, `8080`, `9090`, and `9464`. Stop any existing services on those ports, or override them in `.env` using the `_HOST_PORT` variable variants.
   </Accordion>
 
   <Accordion title="Loki fails to start repeatedly">
@@ -246,7 +262,7 @@ For reliable block production on mainnet, run the node on hardware that meets or
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
 | CPU | 6 cores, Intel 8th Gen+ | 8+ cores |
-| RAM | 16 GB | 32 GB |
+| RAM | 32 GB | 32 GB+ |
 | Storage | 100 GB SSD | 500 GB NVMe SSD |
 | Network | 100 Mbps | 1 Gbps |
 

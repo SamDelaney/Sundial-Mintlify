@@ -1,7 +1,7 @@
 ---
 title: "Charms Bridge: Trustless Bitcoin Cross-Chain Transfers"
 sidebarTitle: "Charms Bridge"
-description: "The Charms bridge enables trustless Bitcoin-to-Cardano transfers using zk-SNARK proofs (Groth16 over BLS12-381) verified directly on-chain via Plutus v3 smart contracts."
+description: "Move Bitcoin-native Charms to Cardano without custodians. V1 uses ICP signatures; V2 verifies Groth16 zk-SNARKs on Cardano with Plutus v3 builtins."
 ---
 
 The Charms bridge is a cross-chain asset protocol that lets you move Bitcoin-native assets — called **Charms** — to Cardano (and other UTXO chains) without custodians, multisigs, or trusted relayers. A Charm is a programmable token that lives on top of a Bitcoin UTXO: it carries an app contract, a ZK proof of correctness, and arbitrary state data. When you beam a Charm cross-chain, you destroy it on Bitcoin and unlock a corresponding native token on the destination chain — with the entire authorization path enforced by on-chain cryptography rather than off-chain trust.

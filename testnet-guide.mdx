@@ -31,7 +31,7 @@ You only need one. Install it as a browser extension, create or restore a wallet
 
 ## Claiming testnet sBTC from the faucet
 
-The faucet at [sundialprotocol.com/testnet/faucet](https://sundialprotocol.com/testnet/faucet) distributes free testnet sBTC to any valid testnet address. No wallet connection or signature is required — you paste your address and click a button.
+The faucet at [sundialprotocol.com/testnet/faucet](https://www.sundialprotocol.com/testnet/faucet) distributes free testnet sBTC to any valid testnet address. No wallet connection or signature is required — you paste your address and click a button.
 
 <Steps>
   <Step title="Switch your wallet to testnet">
@@ -41,7 +41,7 @@ The faucet at [sundialprotocol.com/testnet/faucet](https://sundialprotocol.com/t
   </Step>
 
   <Step title="Submit your address to the faucet">
-    1. Go to [sundialprotocol.com/testnet/faucet](https://sundialprotocol.com/testnet/faucet).
+    1. Go to [sundialprotocol.com/testnet/faucet](https://www.sundialprotocol.com/testnet/faucet).
     2. Paste your `addr_test1…` address into the **Sundial testnet address** field.
     3. Click **Request testnet sBTC**.
 
@@ -78,7 +78,7 @@ Address-related errors — invalid format, wrong network, no payment credential,
 
 | Detail | Value |
 | --- | --- |
-| **Faucet page** | `https://sundialprotocol.com/testnet/faucet` |
+| **Faucet page** | `https://www.sundialprotocol.com/testnet/faucet` |
 | **Node RPC** | `https://rpc.testnet.sundialprotocol.com` |
 | **Address format** | `addr_test1…` (UTXO-based L1 testnet bech32 format) |
 | **sBTC denomination** | 1,000,000 lovelace = 1 sBTC |
@@ -207,7 +207,7 @@ Not found: 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
 It may still be queued for processing — try again in a few seconds.
 ```
 
-A transaction is not immediately visible after `send` — `POST /submit` queues it, and a background worker on the node validates and includes it shortly after. If you see "Not found" for a hash you just sent, wait a few seconds and try again.
+A transaction is not immediately visible after `send` — the node queues it for processing, and a background worker validates and includes it shortly after. If you see "Not found" for a hash you just sent, wait a few seconds and try again.
 
 ### Check node status
 
@@ -226,7 +226,7 @@ node dist/bin.js node node-status --endpoint https://rpc.testnet.sundialprotocol
 • Endpoint: https://rpc.testnet.sundialprotocol.com
 ```
 
-Run `node-status` first whenever `send` or `wallet balance` can't connect. A node can be **live** (the process is running) but not **ready** (database, cache, or L1 connection is still starting up). The status output identifies which subsystem is failing so you know whether to wait or escalate.
+Run `node-status` first whenever `send` or `wallet balance` can't connect. A node can be **live** (the process is running) but not **ready** (still completing startup). The status output identifies which subsystem is failing so you know whether to wait or escalate.
 
 ## CLI command reference
 
@@ -274,7 +274,7 @@ Run `node-status` first whenever `send` or `wallet balance` can't connect. A nod
     ```
   </Accordion>
   <Accordion title="node node-status [--endpoint &lt;url&gt;]" icon="signal">
-    Checks whether the target node is live and ready. Reports any failing subsystems (database, cache, L1 provider). Defaults to `http://localhost:3000` if `--endpoint` is omitted.
+    Checks whether the target node is live and ready. Reports any failing subsystems so you know whether to wait or escalate. Defaults to `http://localhost:3000` if `--endpoint` is omitted.
 
     ```bash
     node dist/bin.js node node-status --endpoint <url>

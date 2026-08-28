@@ -1,7 +1,7 @@
 ---
-title: "Fraud Proofs: Challenging Invalid L2 Blocks"
+title: "Fraud Proofs: How Invalid L2 Blocks Are Challenged"
 sidebarTitle: "Fraud Proofs"
-description: "Any network participant can submit a fraud proof against an invalid Sundial L2 block. Learn the fraud proof types, multi-step computation threads, and the reward mechanism."
+description: "Any participant can challenge an invalid Sundial L2 block with fraud proofs, run multi-step computation threads on-chain, and earn the full operator bond."
 ---
 
 Sundial is an optimistic rollup: operators commit L2 block headers to Cardano without executing every transaction on L1. The system assumes committed blocks are valid by default and only intervenes when someone proves otherwise. Fraud proofs are the cryptographic mechanism that makes this assumption safe. If an operator commits a block containing invalid transactions — a double-spend, a non-existent input, or a bad validity range — any network participant can submit a fraud proof, have the block removed, and claim the operator's entire bond as a reward.
@@ -113,10 +113,10 @@ If the computation thread is interrupted — by an error, a timeout, or the prov
 
 The following fraud proof types use multi-step computation threads due to their computational complexity:
 
-- **DOUBLE-SPEND**: 3 steps — verify the first transaction's inclusion and inputs root, verify the second transaction's inclusion, prove the shared input.
-- **NO-INPUT** (Non-Existent Input): 2 steps — verify the transaction's inclusion, prove the input does not exist in the UTxO set.
-- **INPUT-NO-IDX** (Non-Existent Input No Index): 4 steps — extended proof of non-existence without an index reference.
-- **INVALID-RANGE**: 2 steps — verify the transaction's inclusion, prove the validity range falls outside the block interval.
+- **DOUBLE-SPEND** — requires verifying both transactions' inclusion proofs and proving the shared input, across multiple Cardano transactions.
+- **NO-INPUT** (Non-Existent Input) — requires verifying the spending transaction's inclusion and proving the referenced input does not exist in the UTxO set.
+- **INPUT-NO-IDX** (Non-Existent Input No Index) — an extended non-existence proof that does not rely on an index reference.
+- **INVALID-RANGE** — requires verifying the transaction's inclusion and proving that its validity range falls outside the block's event interval.
 
 ## The Reward Mechanism
 
