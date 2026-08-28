@@ -1,0 +1,264 @@
+---
+title: "Deploy a Sundial Layer Node: Docker & Nix Guide"
+sidebarTitle: "Layer Node"
+description: "Run the Sundial-Layer-Node as a block producer on the Sundial L2. Covers Docker Compose setup, split node roles, smoke checks, and Grafana monitoring."
+---
+
+The Sundial-Layer-Node is the production TypeScript node that processes L2 transactions and commits block headers to Cardano. It handles everything from receiving raw transactions over HTTP and validating them against the mempool, to batching them into blocks and submitting signed block-header commitments to the Cardano L1 state queue. You can run the node as a single all-in-one process (the default) or deploy each role in its own container for horizontal scaling and fault isolation.
+
+## Node Roles
+
+The node ships with four logical roles. You select a role by setting `NODE_ROLE` in your environment. In production you can deploy each role as a separate container sharing the same PostgreSQL and Redis infrastructure.
+
+<CardGroup cols={2}>
+  <Card title="api" icon="arrow-right-to-bracket">
+    HTTP ingress layer. Receives L2 transactions via REST, validates the CBOR envelope, and enqueues payloads to a Redis Stream for downstream processing.
+  </Card>
+  <Card title="tx-processor" icon="gear">
+    Consumes the Redis Stream, deserializes each transaction, computes its hash, and inserts it into the mempool database. Scales horizontally — run multiple instances of this role against the same stream.
+  </Card>
+  <Card title="sequencer" icon="layer-group">
+    Builds blocks from the mempool, commits block headers to the Cardano L1 state queue, and runs the L1 user-event sync fiber to pick up deposits and withdrawals.
+  </Card>
+  <Card title="all" icon="circle-nodes">
+    Runs all three roles in a single process. This is the default and is recommended for getting started or running a single-node testnet setup.
+  </Card>
+</CardGroup>
+
+<Info>
+  Set `NODE_ROLE=all` in your `.env` file to run everything in one container. Switch to the `split` Docker Compose profile to deploy `api`, `tx-processor`, and `sequencer` as separate services.
+</Info>
+
+## Prerequisites
+
+Before deploying the Sundial-Layer-Node, make sure you have the following ready:
+
+- **Docker** and **Docker Compose** (v2.20+)
+- **PostgreSQL 15** — the Docker Compose stack includes a bundled instance
+- **Redis 7+** — also bundled in the Docker Compose stack
+- **Cardano L1 provider** — either a [Blockfrost](https://blockfrost.io) API key (quickest to set up) or a local Kupo + Ogmios endpoint pair (recommended for production)
+- **Operator seed phrases** — three separate 24-word seed phrases for the main operator wallet, the block-commitment wallet, and the merge-transaction wallet
+
+## Quick Start with Docker Compose
+
+The fastest way to run a node is with the bundled Docker Compose stack, which starts the node alongside PostgreSQL, Redis, and the full observability suite.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/sundial-protocol/sundial-monorepo
+    cd sundial-monorepo/demo/midgard-node
+    ```
+  </Step>
+
+  <Step title="Create your environment file">
+    Copy the example environment file and open it for editing:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    At minimum, set your L1 provider credentials and operator seed phrases. For a Blockfrost-backed testnet node:
+
+    ```env
+    NETWORK=Preprod
+    L1_PROVIDER=Blockfrost
+    L1_BLOCKFROST_API_URL=https://cardano-preprod.blockfrost.io/api/v0
+    L1_BLOCKFROST_KEY=preprodYOUR_KEY_HERE
+
+    L1_OPERATOR_SEED_PHRASE="word1 word2 ... word24"
+    L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT="word1 word2 ... word24"
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX="word1 word2 ... word24"
+    ```
+
+    <Warning>
+      Use three distinct seed phrases — one per variable. Never reuse the same seed phrase across roles, and never reuse any of these as a faucet wallet seed.
+    </Warning>
+  </Step>
+
+  <Step title="Start all services">
+    Launch the full stack (node + PostgreSQL + Redis + observability) using the `monolith` profile:
+
+    ```bash
+    docker compose --profile monolith up -d --build
+    ```
+
+    To start only the node and its database dependencies without monitoring:
+
+    ```bash
+    docker compose -f docker-compose.dev.yaml up -d --build
+    ```
+  </Step>
+
+  <Step title="Verify the node is running">
+    Confirm all containers started successfully:
+
+    ```bash
+    docker compose ps
+    ```
+
+    Then probe the node's API and state queue:
+
+    ```bash
+    # Check the state queue endpoint
+    curl -fsS http://localhost:3000/stateQueue
+    ```
+
+    Follow the node logs in real time:
+
+    ```bash
+    docker logs -f sundial-node-1
+    ```
+  </Step>
+</Steps>
+
+## Smoke Checks
+
+Run these checks after startup to confirm the full stack is healthy.
+
+<Steps>
+  <Step title="Confirm the node API is reachable">
+    ```bash
+    curl -fsS http://localhost:3000/stateQueue
+    ```
+
+    A JSON response with state-queue data means the node is accepting requests.
+  </Step>
+
+  <Step title="Confirm Prometheus is scraping">
+    ```bash
+    curl -fsS 'http://localhost:9090/api/v1/targets?state=active'
+    ```
+
+    The response should list active scrape jobs for `prometheus`, `midgard_nodes`, `cadvisor`, and `tempo`.
+  </Step>
+
+  <Step title="Confirm metrics are flowing">
+    Open Grafana at `http://localhost:3001` and verify the provisioned data sources — `prometheus`, `Loki`, and `Tempo` — are all shown as connected.
+  </Step>
+</Steps>
+
+## Observability Stack
+
+When you start the node with the `monolith` Docker Compose profile, the `--with-monitoring` flag is passed automatically. This activates the Prometheus metrics exporter on `PROM_METRICS_PORT` and the OpenTelemetry trace exporter pointed at Tempo.
+
+| Service | Default URL | Purpose |
+|---------|-------------|---------|
+| Node API | `http://localhost:3000` | L2 node HTTP RPC endpoints |
+| Node metrics | `http://localhost:9464/metrics` | Prometheus metrics scrape target |
+| Prometheus | `http://localhost:9090` | Metrics collection and storage |
+| Grafana | `http://localhost:3001` | Dashboards, logs (Loki), and traces (Tempo) |
+| Loki | `http://localhost:3100` | Log aggregation via Promtail |
+| Tempo | `http://localhost:3200` | Distributed trace storage and querying |
+| cAdvisor | `http://localhost:8081` | Container resource metrics |
+
+The node exposes these tracked metrics:
+
+| Metric | Description |
+|--------|-------------|
+| `tx_count` | Total transactions received |
+| `tx_queue_size` | Current in-flight queue depth |
+| `mempool_tx_count` | Transactions in the mempool |
+| `commit_block_count` | Blocks committed to L1 |
+| `commit_block_tx_count` | Transactions in committed blocks |
+| `block_total_user_events_count` | Deposit and withdrawal events per block |
+| `total_tx_size` | Cumulative transaction byte size |
+
+<Tip>
+  Generate some traffic by submitting transactions through `POST /submit`, then open Grafana Explore to verify logs appear in Loki and traces appear in Tempo. This confirms the full telemetry pipeline is working end to end.
+</Tip>
+
+## Stopping and Cleaning Up
+
+```bash
+# Stop the stack
+docker compose down
+
+# Stop and remove all persistent volumes (destructive — wipes chain data)
+docker compose down -v
+```
+
+<Warning>
+  Running `docker compose down -v` deletes all PostgreSQL, Prometheus, Grafana, and Tempo volumes. Only do this when you want a clean slate, not as part of routine restarts.
+</Warning>
+
+## Split-Role Deployment
+
+For production operators who want to scale transaction processing independently from block production, use the `split` Docker Compose profile. This starts `node-api`, `node-tx-processor`, and `node-sequencer` as separate containers, all sharing the same PostgreSQL and Redis backend.
+
+```bash
+docker compose --profile split up -d --build
+```
+
+Each role container reads `NODE_ROLE` from the environment override in the Compose file. You can run multiple `node-tx-processor` replicas to increase mempool ingestion throughput — they compete for work from the same Redis Stream consumer group.
+
+## Nix Deployment
+
+If you prefer a reproducible Nix-based build instead of Docker, use the flake in the `demo/` directory:
+
+```bash
+# Clone the repository
+git clone https://github.com/IntersectMBO/sundial-layer-node
+cd sundial-layer-node
+
+# Check out a tagged release
+git switch -d tags/<TAGGED_VERSION>
+
+# Build with Nix
+nix build .#sundial-layer-node
+
+# Run the built binary
+./result/bin/sundial-layer-node
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="docker compose up fails with missing env values">
+    Verify that `demo/midgard-node/.env` exists and all required variables are populated. Run `grep -E '^(L1_PROVIDER|NETWORK|L1_OPERATOR_SEED_PHRASE)' .env` to confirm the essentials are set.
+  </Accordion>
+
+  <Accordion title="midgard_nodes Prometheus target is down">
+    Confirm you started with the `monolith` profile (not `docker-compose.dev.yaml`). Check that `PROM_METRICS_PORT=9464` is set in your `.env` and that the node started with `--with-monitoring` in its command.
+  </Accordion>
+
+  <Accordion title="No logs appearing in Loki">
+    Verify Promtail is running and has access to `/var/run/docker.sock` and `/var/lib/docker/containers`. Confirm the node container has the `logging: promtail` label in the Compose file.
+  </Accordion>
+
+  <Accordion title="No traces appearing in Tempo">
+    Check that `OLTP_EXPORTER_URL=http://tempo:4318/v1/traces` is set in your `.env`. The variable name is `OLTP_EXPORTER_URL` (not `OTLP`) — this is by design in the current implementation.
+  </Accordion>
+
+  <Accordion title="Port conflicts on startup">
+    The stack uses ports `3000`, `3001`, `3100`, `3200`, `4317`, `4318`, `5433`, `6379`, `8081`, `9090`, and `9464`. Stop any existing services on those ports, or override them in `.env` using the `_HOST_PORT` variable variants.
+  </Accordion>
+
+  <Accordion title="Loki fails to start repeatedly">
+    Run `docker compose down -v` to clear the Loki volume, then restart with `docker compose --profile monolith up -d --build`.
+  </Accordion>
+</AccordionGroup>
+
+## Hardware Requirements
+
+For reliable block production on mainnet, run the node on hardware that meets or exceeds these specifications:
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| CPU | 6 cores, Intel 8th Gen+ | 8+ cores |
+| RAM | 16 GB | 32 GB |
+| Storage | 100 GB SSD | 500 GB NVMe SSD |
+| Network | 100 Mbps | 1 Gbps |
+
+The AWS equivalent for the recommended configuration is an **m6i.2xlarge** instance (8 vCPU, 32 GB RAM).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Reference" icon="sliders" href="/operators/configuration">
+    Complete reference for all environment variables — L1 provider, timing intervals, PostgreSQL, Redis, and monitoring settings.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/operators/cli-reference">
+    Use the `midgard` CLI to manage wallets, send transactions, and check node status from the command line.
+  </Card>
+</CardGroup>

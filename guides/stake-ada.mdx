@@ -1,0 +1,82 @@
+---
+title: "Stake ADA on Sundial L2 and Earn Rewards"
+sidebarTitle: "Stake ADA"
+description: "Stake ADA on the Sundial Layer 2 to earn staking rewards. Learn how to deposit, monitor your position, and withdraw using the Sundial financial dashboard."
+---
+
+ADA staking on Sundial runs through the Midgard Layer 2 network, giving you access to efficient staking with the security guarantees of the Cardano Layer 1 settlement chain underneath. When you stake ADA on Sundial, your funds enter the L2 and are allocated to yield-generating instruments while the L2 continuously settles its state back to Cardano L1. Your earnings accumulate in ADA and are visible in the Portfolio tab of the dashboard.
+
+## Prerequisites
+
+Before staking ADA, make sure you have:
+
+- A Cardano wallet (Eternl, Lace, Typhon, Yoroi, GeroWallet, or NuFi) installed and connected to the Sundial dashboard. See [Connect Your Wallet](/guides/connect-wallet) if you haven't done this yet.
+- An ADA balance sufficient to cover your desired staking amount plus the Cardano network transaction fee.
+- **Testnet only:** testnet sBTC claimed from the faucet. See [Claim Testnet sBTC](/guides/faucet) to get test tokens before staking on the testnet.
+
+## Stake ADA
+
+<Steps>
+  <Step title="Connect your Cardano wallet">
+    Navigate to [sundialprotocol.com/dashboard](https://www.sundialprotocol.com/dashboard) and click **Connect Wallet** in the top-right corner. Select your Cardano wallet from the list and approve the connection in your wallet extension.
+
+    If your wallet is already connected, your address and balance appear in the top bar — skip to the next step.
+  </Step>
+  <Step title="Open the Stake tab and select ADA">
+    In the Sundial dashboard, click the **Stake** tab. In the chain selector, choose **ADA** or **Cardano**. The staking interface loads with your available ADA balance and an amount input field.
+  </Step>
+  <Step title="Enter your staking amount">
+    Type the amount of ADA you want to stake. The dashboard displays:
+
+    - The estimated staking reward rate for the current period
+    - The Cardano network transaction fee for the deposit
+    - Your remaining ADA balance after staking
+
+    Review these details before proceeding.
+  </Step>
+  <Step title="Approve the transaction in your wallet">
+    Click **Stake**. Your wallet extension opens a transaction approval prompt showing the deposit details. Review the transaction and click **Sign** or **Confirm** to authorize it. The transaction is submitted to the Sundial L2 and settled on Cardano L1.
+  </Step>
+  <Step title="Monitor your position in the Portfolio tab">
+    After the transaction confirms, open the **Portfolio** tab. Your staking position appears with:
+
+    - **Allocation** — the amount of ADA currently staked
+    - **Monthly rewards estimate** — projected earnings based on current yield rates
+    - **Accrued rewards** — ADA earned since your last update
+
+    Earnings are denominated in ADA and update as the L2 processes reward distributions.
+  </Step>
+</Steps>
+
+<Note>
+  On the Sundial testnet, use testnet sBTC instead of real ADA. Claim testnet tokens from the [Sundial faucet](/guides/faucet) before attempting to stake. Testnet tokens have no monetary value.
+</Note>
+
+## Withdraw Staked ADA
+
+When you are ready to withdraw your staked ADA, the funds move from the Sundial L2 back to your Cardano L1 wallet through the standard withdrawal process.
+
+<Steps>
+  <Step title="Open the Withdraw tab">
+    In the Sundial dashboard, click the **Withdraw** tab. Your active staking positions appear with the available withdrawal amounts.
+  </Step>
+  <Step title="Enter the withdrawal amount">
+    Enter the amount of ADA you want to withdraw, or click **Max** to withdraw your full position. The dashboard shows the estimated Cardano network fee.
+  </Step>
+  <Step title="Submit the withdrawal">
+    Click **Withdraw** and approve the transaction in your wallet. This creates a withdrawal order on the Sundial L2.
+  </Step>
+  <Step title="Wait for L2 settlement">
+    L2 withdrawals go through a maturity window before funds are available on Cardano L1. This period allows the optimistic rollup's fraud proof window to elapse, ensuring the withdrawal is valid against the finalized L2 state.
+
+    Once your withdrawal reaches maturity, your ADA becomes claimable on Cardano L1 and your wallet balance updates automatically.
+
+    <Tip>
+      If you need your funds immediately, an active **Facilitator** can front your ADA on L1 right away for a small fee, while they wait out the maturity period on your behalf. See [Withdraw Funds from Sundial](/guides/withdraw) for the accelerated withdrawal flow.
+    </Tip>
+  </Step>
+</Steps>
+
+<Note>
+  ADA staked on the Sundial L2 is subject to the L2 maturity window before it fully settles back to Cardano L1. This window is an inherent property of optimistic rollup security — it ensures the validity of all state transitions before they become final. The [Withdraw guide](/guides/withdraw) covers the full withdrawal lifecycle in detail, including accelerated exits and the emergency escape hatch.
+</Note>

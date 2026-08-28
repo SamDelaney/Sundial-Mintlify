@@ -1,0 +1,277 @@
+---
+title: "Transaction API: Submit and Query L2 Transactions"
+sidebarTitle: "Transactions"
+description: "POST /submit submits a hex-encoded CBOR transaction to the Sundial L2 queue. GET /tx looks up a transaction. GET /txs queries address history. "
+---
+
+Three endpoints handle transactions on the Sundial L2: `POST /submit` enqueues a signed transaction for processing, `GET /tx` retrieves a single transaction by hash, and `GET /txs` returns paginated address history. Together they cover the full lifecycle of an L2 transaction from submission through confirmation.
+
+<Note>
+  These endpoints are available on full (monolith) nodes. `POST /submit` is also served by `api`-role nodes in horizontally scaled deployments. If you are connecting to a public `api`-role endpoint, `/tx` and `/txs` may not be reachable — use the full node URL for read operations.
+</Note>
+
+---
+
+## POST /submit — Submit an L2 Transaction
+
+Submit a fully built and signed transaction to the Sundial L2 processing queue. The node reads the raw CBOR hex from the request body, validates it, and enqueues it for mempool insertion.
+
+<Warning>
+  `POST /submit` accepts the transaction CBOR as a **raw text body**, not a JSON object. Send `Content-Type: text/plain` and place the hex string directly in the body — do not wrap it in a JSON envelope.
+</Warning>
+
+### Request
+
+```http
+POST /submit
+Content-Type: text/plain
+
+<hex-encoded-transaction-cbor>
+```
+
+### Example
+
+```bash
+curl -X POST https://rpc.testnet.sundialprotocol.com/submit \
+  -H "Content-Type: text/plain" \
+  -d "84a500818258209e4..."
+```
+
+### Responses
+
+<Tabs>
+  <Tab title="Success (200)">
+    ```json
+    {
+      "message": "Successfully added the transaction to the queue",
+      "id": "<redis-stream-entry-id>"
+    }
+    ```
+
+    The `id` field is a Redis stream entry ID, **not** a transaction hash. Compute the transaction hash client-side from the CBOR if you need it for tracking:
+
+    ```typescript
+    import { CML } from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
+
+    const txHash = CML.hash_transaction(
+      CML.Transaction.from_cbor_hex(txCbor).body()
+    ).to_hex();
+    ```
+  </Tab>
+  <Tab title="Invalid CBOR (400)">
+    ```json
+    { "error": "Invalid CBOR provided" }
+    ```
+  </Tab>
+  <Tab title="Enqueue Failure (500)">
+    ```json
+    { "error": "Failed to enqueue transaction" }
+    ```
+  </Tab>
+</Tabs>
+
+### Processing Pipeline
+
+After a successful enqueue, a background worker pool picks up the transaction from the Redis stream and:
+
+<Steps>
+  <Step title="Batch claim">
+    Workers claim batches from the Redis consumer group, automatically reclaiming stale-pending entries.
+  </Step>
+  <Step title="Parse">
+    Each CBOR hex string is parsed into an L1 transaction in a worker-thread pool.
+  </Step>
+  <Step title="Validate">
+    The transaction hash is computed, spent inputs and produced outputs are extracted, and the transaction is validated — including a minimum fee check against `minFeeA: 44` and `minFeeB: 155381`.
+  </Step>
+  <Step title="Insert">
+    Valid transactions are inserted into `MempoolDB` and the stream entry is acknowledged. Invalid transactions are rejected and dead-lettered after the configured maximum delivery attempts — they do not affect other in-flight submissions.
+  </Step>
+</Steps>
+
+<Tip>
+  Submit the same transaction twice safely — at-least-once queue semantics with nonce-UTxO anti-replay prevent double-processing. Use `GET /tx` to verify inclusion after submission.
+</Tip>
+
+### Building a Transaction for Submission
+
+The node has no transaction-building endpoint — you must build and sign the transaction yourself before calling `POST /submit`. Use a custom `Provider` that sources UTxOs from `GET /utxos` and routes submission to `POST /submit`:
+
+```typescript
+import { Lucid } from "@lucid-evolution/lucid";
+import { CML } from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
+
+class MidgardNodeProvider implements Provider {
+  constructor(private readonly baseUrl: string) {}
+
+  async getUtxos(address: string): Promise<UTxO[]> {
+    const res = await fetch(
+      `${this.baseUrl}/utxos?address=${encodeURIComponent(address)}`
+    );
+    const { utxos } = (await res.json()) as {
+      utxos: { outref: string; value: string }[];
+    };
+    return utxos.map(({ outref, value }) =>
+      coreToUtxo(
+        CML.TransactionUnspentOutput.new(
+          CML.TransactionInput.from_cbor_hex(outref),
+          CML.TransactionOutput.from_cbor_hex(value)
+        )
+      )
+    );
+  }
+
+  async submitTx(tx: string): Promise<TxHash> {
+    await fetch(`${this.baseUrl}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: tx,
+    });
+    return CML.hash_transaction(
+      CML.Transaction.from_cbor_hex(tx).body()
+    ).to_hex();
+  }
+  // Implement getProtocolParameters and remaining Provider methods
+  // using minFeeA: 44 and minFeeB: 155381 for L2 fee validation.
+}
+
+const lucid = await Lucid(
+  new MidgardNodeProvider("https://rpc.testnet.sundialprotocol.com"),
+  "Preprod"
+);
+lucid.selectWallet.fromPrivateKey(senderPrivateKey);
+
+const tx = await lucid
+  .newTx()
+  .pay.ToAddress(recipientAddress, { lovelace: 2_000_000n })
+  .complete();
+
+const signed = await tx.sign.withPrivateKey(senderPrivateKey).complete();
+const txHash = await signed.submit(); // routes through MidgardNodeProvider.submitTx
+```
+
+<Note>
+  Standard Lucid providers (Blockfrost, Kupmios, Maestro) talk to the Cardano L1 — they are unaware of the Sundial L2 ledger. Always use a custom provider that routes UTxO lookups to `GET /utxos` and submission to `POST /submit`.
+</Note>
+
+---
+
+## GET /tx — Look Up a Transaction
+
+Retrieve the raw CBOR of a single transaction by its hash. The node searches the mempool first, then immutable (confirmed) storage.
+
+### Query Parameters
+
+<ParamField query="tx_hash" type="string" required>
+  The 64-character hex transaction hash to look up. Must be a valid hex string of exactly 64 characters.
+</ParamField>
+
+### Example
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/tx?tx_hash=9e4f3a2b1c..."
+```
+
+### Responses
+
+<Tabs>
+  <Tab title="Success (200)">
+    ```json
+    { "tx": "<hex-cbor-transaction>" }
+    ```
+
+    The `tx` field contains the full CBOR-encoded transaction as a hex string. Decode it with any CML-compatible library.
+  </Tab>
+  <Tab title="Not Found (404)">
+    ```json
+    { "error": "Transaction not found: <tx_hash>" }
+    ```
+  </Tab>
+  <Tab title="Invalid Hash (400)">
+    ```json
+    { "error": "Invalid transaction hash: <tx_hash>" }
+    ```
+
+    Returned when `tx_hash` is missing, not a valid hex string, or not exactly 64 characters long.
+  </Tab>
+</Tabs>
+
+---
+
+## GET /txs — Query Address Transaction History
+
+Return a paginated list of transaction CBORs for a given Cardano address, sourced from the L2 address history database.
+
+### Query Parameters
+
+<ParamField query="address" type="string" required>
+  Bech32 Cardano address. On testnet this must start with `addr_test1`. The address must parse successfully and carry a valid payment credential.
+</ParamField>
+
+<ParamField query="limit" type="integer">
+  Maximum number of results to return. Defaults to `100`. Values above `500` are silently clamped to `500`. Must be a non-negative integer ≥ 1 if supplied.
+</ParamField>
+
+<ParamField query="offset" type="integer">
+  Zero-based offset for pagination. Defaults to `0`. Must be a non-negative integer if supplied.
+</ParamField>
+
+### Example
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/txs?address=addr_test1qp...&limit=20&offset=0"
+```
+
+### Responses
+
+<Tabs>
+  <Tab title="Success (200)">
+    ```json
+    {
+      "txs": ["<hex-cbor>", "<hex-cbor>"],
+      "limit": 20,
+      "offset": 0,
+      "hasMore": true
+    }
+    ```
+
+    Each entry in `txs` is a hex-encoded CBOR transaction. The `hasMore` field is `true` when exactly `limit` rows were returned, indicating additional pages may exist. Fetch the next page by incrementing `offset` by `limit`.
+  </Tab>
+  <Tab title="Invalid Address (400)">
+    ```json
+    { "error": "Invalid address format: <address>" }
+    ```
+
+    Address validation applies the same three-tier check as `GET /utxos`: type check, bech32 parse + payment credential check, then a general parse fallback.
+  </Tab>
+  <Tab title="Invalid Pagination (400)">
+    ```json
+    { "error": "Invalid limit: <value>" }
+    ```
+
+    Or `"Invalid offset: <value>"` for a bad offset parameter.
+  </Tab>
+</Tabs>
+
+### Pagination Example
+
+```typescript
+async function getAllTxsForAddress(address: string): Promise<string[]> {
+  const limit = 100;
+  let offset = 0;
+  const all: string[] = [];
+
+  while (true) {
+    const res = await fetch(
+      `https://rpc.testnet.sundialprotocol.com/txs` +
+        `?address=${encodeURIComponent(address)}&limit=${limit}&offset=${offset}`
+    );
+    const { txs, hasMore } = await res.json();
+    all.push(...txs);
+    if (!hasMore) break;
+    offset += limit;
+  }
+
+  return all;
+}
+```

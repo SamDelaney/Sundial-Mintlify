@@ -1,0 +1,127 @@
+---
+title: "Sundial Protocol Architecture: 7-Layer System Overview"
+sidebarTitle: "Architecture"
+description: "Explore Sundial Protocol's 7-layer architecture from the Cardano settlement L1 through to the user-facing dashboard, bridges, and staking layer."
+---
+
+Sundial Protocol is a layered stack built on top of Cardano as its settlement layer. Each layer has a specific responsibility — from on-chain smart contracts that hold your funds and verify fraud proofs, all the way up to the financial dashboard you interact with daily. Understanding these layers helps you see how your assets remain secure even as they move at high speed through the L2.
+
+## The 7-Layer Stack
+
+The architecture separates concerns cleanly: lower layers prioritize security and settlement finality; upper layers prioritize usability, routing, and integration. The diagram below summarizes each layer at a glance.
+
+| Layer | Name | What It Does For You |
+|-------|------|----------------------|
+| **L1** | Cardano Settlement Layer | Holds your funds in smart contracts; provides final security and fraud-proof resolution |
+| **L2** | Midgard Optimistic Rollup | Processes your transactions off-chain at high speed; anchors block headers on L1 |
+| **SL3** | Data & Security Services | Indexes L2 data so wallets and apps can query it; runs block-validity monitoring |
+| **SL4** | Construction Layer | Defines how transactions are built; manages shared liquidity pools for DeFi apps |
+| **SL5** | Function Layer | Hosts bridges, yield instruments, and the watcher network |
+| **SL6** | Routing Layer | Routes bridge requests and staking actions; maintains the facilitator registry |
+| **SL7** | User Layer | Dashboard, chain explorer, operator toolkit, watcher toolkit, and network status |
+
+## Layer-by-Layer Breakdown
+
+<Accordion title="L1 — Cardano Settlement Layer">
+Cardano is the security anchor for everything Sundial does. A suite of smart contracts lives here permanently:
+
+- **State Queue** — the ordered list of L2 block headers committed by operators. Every block your L2 transactions belong to is recorded here.
+- **Settlement & Scheduler Contracts** — manage the timing of block finalization and the orderly handoff of confirmed state.
+- **Deposit & Withdrawal Contracts** — hold your assets when you move funds between L1 and L2. Nothing leaves without your authorization.
+- **Operator Registry** — tracks which operators are bonded and eligible to produce blocks.
+- **Fraud Proof Contracts** — if a block is invalid, any watcher can submit a fraud proof here and the offending operator's bond is slashed.
+
+Cardano's deterministic UTxO model makes fraud proofs simpler and cheaper to verify than on account-based chains — a structural advantage that keeps your funds safer at lower cost.
+</Accordion>
+
+<Accordion title="L2 — Midgard Optimistic Rollup">
+Midgard is the Sundial L2 itself — the engine that gives you 2,000–5,000 TPS throughput without sacrificing L1 security. Operators run Midgard nodes, batch your transactions into blocks, and periodically commit compact block headers to the Cardano state queue.
+
+Your transactions are processed off-chain in milliseconds. The block header — a cryptographic fingerprint of all activity — is what gets written to L1. If anything is wrong with that fingerprint, watchers can prove it. If nothing is wrong, the block matures through the challenge window and its state becomes final.
+
+For a deeper look at how Midgard works, see [L2 Rollup](/concepts/l2-rollup).
+</Accordion>
+
+<Accordion title="SL3 — Data & Security Services">
+Two categories of service run at this layer:
+
+- **Indexers** — subscribe to L2 activity and expose queryable APIs so wallets, explorers, and DeFi apps can look up balances, transaction history, and upcoming block producers without running a full node.
+- **Security Services** — continuously validate blocks in the state queue and feed challenge signals up to the watcher network when anomalies are detected.
+
+The indexer OpenAPI specification is available at `https://rpc.testnet.sundialprotocol.com`.
+</Accordion>
+
+<Accordion title="SL4 — Construction Layer">
+Before a transaction reaches the L2, it must be correctly constructed. SL4 provides:
+
+- **Offchain Transaction Specifications** — CIP-30-compatible standards that let existing Cardano wallets (Eternl, Lace, Typhon, Yoroi, GeroWallet, NuFi) build valid L2 transactions without custom integrations.
+- **Wallet Specifications** — covering Bitcoin wallets (via Reown AppKit), Cardano wallets, and the L2 itself.
+- **Shared Liquidity Pools** — protocol-verified pools for wBTC, stablecoins, and ADA, made available to native dApps and verified third-party integrations. These pools power the Babel fee conversions and yield strategies described in [Tokenomics](/concepts/tokenomics).
+</Accordion>
+
+<Accordion title="SL5 — Function Layer">
+SL5 is where protocol capabilities are exposed as usable features:
+
+- **Bridges** — three integration partners (Charms, Cardinal, FluidTokens) provide trust-minimized Bitcoin↔Cardano transfers. Charms uses recursive Groth16 zk-SNARK proofs; Cardinal uses MuSig2 + BitVMX fraud proofs. See [Charms Bridge](/components/charms-bridge) for details.
+- **Yield Instruments** — Alchemy generates FIRE (high-beta BTC growth) and ICE (senior BTC-backed USD claim) reserve assets, letting you choose your risk/return profile.
+- **Watcher Network** — Provers, Facilitators, Archivists, and Canaries all operate at this layer, providing fraud detection, accelerated transfers, historical data, and custom monitoring. See [Network Roles](/concepts/roles).
+</Accordion>
+
+<Accordion title="SL6 — Routing Layer">
+SL6 sits between the user-facing tools and the functional capabilities below them:
+
+- **Bridging Services** — monitor bridge status, route your asset transfers to the right bridge, and display real-time progress.
+- **Staking Services** — let you stake assets and track rewards without managing raw contract interactions.
+- **Facilitator Registry** — a public directory of active Facilitator watchers, their supported networks, and their fee schedules, so you can choose who accelerates your withdrawals.
+</Accordion>
+
+<Accordion title="SL7 — User Layer">
+Everything you see and touch lives here:
+
+- **Financial Dashboard** — manage deposits, withdrawals, staking positions, and yield in one place.
+- **Chain Explorer** — inspect L2 blocks, transactions, and state queue entries.
+- **Network Status** — live view of operator uptime, TPS, and challenge-window activity.
+- **Operator Toolkit** — CLI and configuration tooling for Layer Operators and Bridge Operators.
+- **Watcher Toolkit** — containerized applications and documentation for running Prover, Facilitator, Archivist, and Canary services.
+- **User Actions API** — a programmatic interface to SL5 and SL6 for developers building on top of Sundial.
+</Accordion>
+
+## How Your Funds Flow
+
+Understanding the end-to-end fund flow helps you trust that your assets are always under cryptographic control.
+
+<Steps>
+  <Step title="Deposit on L1">
+    You send funds to the **Deposit Contract** on Cardano. The contract locks your assets and emits a deposit event that operators monitor. Nothing moves until the L2 acknowledges receipt.
+  </Step>
+  <Step title="Inclusion in an L2 Block">
+    An operator picks up your deposit event and includes it in the next L2 block. Block production typically completes within 20 seconds. Your balance appears in the L2 state once the block header is committed to the state queue.
+  </Step>
+  <Step title="Challenge Window">
+    The committed block sits in the state queue for the duration of the challenge window. Watchers verify every transaction in that block. If a watcher finds fraud, they submit a fraud proof and the block is rejected. If no challenge is raised, the block matures toward finality.
+  </Step>
+  <Step title="Confirmed State">
+    After the challenge window closes, the block is merged into the confirmed state. Your L2 balance is now fully final and backed by Cardano's security.
+  </Step>
+  <Step title="Withdrawal to L1">
+    When you withdraw, the L2 records a withdrawal event. After the challenge window passes, funds are released from the settlement contract back to your Cardano address. Facilitator watchers can accelerate this process for a small fee.
+  </Step>
+</Steps>
+
+<Note>
+  During the challenge window your funds are not at risk — they remain in the smart contracts on Cardano L1 at all times. Only the state claim that represents them is being verified.
+</Note>
+
+## Related Pages
+
+<CardGroup cols={3}>
+  <Card title="L2 Rollup" icon="layer-group" href="/concepts/l2-rollup">
+    How Midgard achieves 2,000–5,000 TPS with optimistic fraud proofs
+  </Card>
+  <Card title="Charms Bridge" icon="bridge" href="/components/charms-bridge">
+    Trustless Bitcoin↔Cardano transfers using Groth16 zk-SNARKs
+  </Card>
+  <Card title="State Queue" icon="list-ol" href="/components/state-queue">
+    The on-chain data structure anchoring every L2 block to Cardano
+  </Card>
+</CardGroup>

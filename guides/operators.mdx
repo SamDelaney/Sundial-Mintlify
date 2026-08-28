@@ -1,0 +1,186 @@
+---
+title: "Run a Sundial Layer Node as a Block Producer"
+sidebarTitle: "Operators"
+description: "Layer Operators process L2 transactions, commit block headers to Cardano, and earn transaction fees. Learn the requirements, responsibilities, and how to get started."
+---
+
+Layer Operators are the block producers of the Sundial L2. You receive transactions from the mempool, assemble them into blocks, and commit block headers to Cardano L1 — forming the continuous chain of state that the rest of the protocol depends on. In exchange for this work, you earn transaction fees from every transaction processed during your scheduled slot. Because block production is deterministic and your staked collateral backs every block you sign, the role demands both technical reliability and economic commitment.
+
+## Responsibilities
+
+As a Layer Operator, you take on four core duties:
+
+- **Transaction processing** — pull pending transactions from the L2 mempool, validate them against protocol rules, and include them in the next block.
+- **Block validity** — ensure every block you produce is correctly formed: valid inputs, preserved value, correct signatures, and compliant validity ranges. Invalid blocks expose your entire bond to a fraud proof challenge.
+- **State queue commitment** — after building a block, submit the block header to the on-chain state queue on Cardano L1 so Watchers and other participants can verify your work.
+- **VRF scheduling rotation** — the Scheduler smart contract assigns you a time-bounded production slot using VRF-based rotation in descending key order. Respond within your slot; inactive operators can be skipped, and persistent inactivity may result in temporary suspension.
+
+## Collateral and Slashing
+
+Before you can produce blocks, you must deposit wBTC collateral into the Operator Directory smart contract. This bond aligns your incentives with the rules of the protocol.
+
+<Warning>
+If you produce an invalid block and a Prover submits a successful fraud proof, your **entire bond is slashed** — not a percentage. The Prover claiming the bounty takes on zero risk because the fraud-proof process is fully deterministic. There is no partial penalty.
+</Warning>
+
+The collateral requirement is set at a level that makes the potential bounty meaningful for Provers to monitor consistently, while making attempted cheating economically irrational for Operators.
+
+## Incentives
+
+Your earnings as a Layer Operator come from the transaction fees collected during your scheduling slot. The expected payout follows this relationship:
+
+```text
+E[Payout] = (λ_tx · TxFee · τ_rotation / N_operators)
+           − (Collateral_btc · C_opportunity)
+           − C_operation
+```
+
+Where `λ_tx` is expected transaction volume, `τ_rotation` is your operation window, `N_operators` is the active operator count, and the subtracted terms represent your opportunity cost on locked collateral and node running costs. For the role to be sustainable, your expected payout must remain positive — higher network throughput and a competitive but not oversaturated operator set both work in your favour.
+
+<Tip>
+Testnet sees 800–1,000 TPS; mainnet targets a baseline of 2,000 TPS, scaling toward 5,000 TPS as the network grows. More throughput means more fee revenue per slot.
+</Tip>
+
+## Node Types
+
+The Operator Toolkit provides two distinct node types. Most operators run both.
+
+<CardGroup cols={2}>
+  <Card title="Sundial-Layer-Node" icon="server">
+    The L2 block-producing node. Built with TypeScript and Effect, it uses PostgreSQL for persistent state and Redis for mempool management. This is the primary node required for all Layer Operators.
+  </Card>
+  <Card title="Sundial-Bridge-Node" icon="arrows-left-right">
+    Runs the bridge layer (Charms and/or Cardinal) to enable trustless cross-chain asset transfers between Bitcoin and the Sundial L2. Required if you intend to act as a Bridge Operator in addition to a Layer Operator.
+  </Card>
+</CardGroup>
+
+## Hardware Requirements
+
+<Info>
+These are minimum specifications for running a stable Layer Node. Exceeding these specifications improves block production latency and reduces your risk of missing a scheduling slot.
+</Info>
+
+| Component | Minimum Specification |
+|---|---|
+| **CPU** | Intel 8th-generation or later, 6+ cores (or equivalent) |
+| **RAM** | 32 GB |
+| **Recommended cloud** | AWS `m6i.2xlarge` or GCP `n2-standard-8` |
+| **Network** | Stable, low-latency internet connection with static IP recommended |
+
+## Getting Started
+
+<Steps>
+  <Step title="Review requirements">
+    Confirm your hardware meets the specifications above and that you have sufficient wBTC available for your collateral bond. Check the Operator Directory to see the current minimum bond amount.
+  </Step>
+  <Step title="Register in the Operator Directory">
+    Submit your registration transaction to the Operator Directory smart contract, including your wBTC bond. Your operator key is derived from this registration and determines your position in the VRF scheduling rotation.
+  </Step>
+  <Step title="Deploy the Sundial-Layer-Node">
+    Pull and start the node using Docker or build it with Nix.
+
+    <Tabs>
+      <Tab title="Docker">
+        ```bash
+        docker run -d \
+          --name sundial-layer-node \
+          -p 8080:8080 \
+          sundial-protocol/sundial-layer-node/<TAGGED_VERSION>
+        ```
+      </Tab>
+      <Tab title="Nix">
+        ```bash
+        git clone https://github.com/IntersectMBO/sundial-layer-node
+        cd sundial-layer-node
+        git switch -d tags/<TAGGED_VERSION>
+        nix build .#sundial-layer-node
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Configure your node">
+    Point your node at the Cardano L1 endpoint and the Sundial testnet RPC. The node expects a JSON configuration file:
+
+    ```json
+    {
+      "node": {
+        "endpoint": "https://rpc.testnet.sundialprotocol.com"
+      },
+      "logging": {
+        "level": "info",
+        "format": "json"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Monitor health and performance">
+    Use the CLI `--status` flag to check real-time metrics and confirm your node is receiving scheduling slots. Keep an eye on block commit latency — if your node is too slow, the Scheduler may skip your slot.
+
+    ```bash
+    sundial-layer-node --status
+    ```
+  </Step>
+</Steps>
+
+## Performance Targets
+
+| Environment | Target TPS |
+|---|---|
+| Testnet | 800–1,000 TPS |
+| Mainnet (baseline) | 2,000 TPS |
+| Mainnet (target ceiling) | 5,000 TPS |
+
+## Bridge Operators
+
+If you also want to run the bridge node to support cross-chain transfers, deploy the Sundial-Bridge-Node alongside your Layer Node.
+
+<Tabs>
+  <Tab title="Docker">
+    ```bash
+    docker run -d \
+      --name sundial-bridge-node \
+      -p 8080:8080 \
+      sundial-protocol/sundial-bridge-node/<TAGGED_VERSION>
+    ```
+  </Tab>
+  <Tab title="Nix">
+    ```bash
+    git clone https://github.com/IntersectMBO/sundial-bridge-node
+    cd sundial-bridge-node
+    git switch -d tags/<TAGGED_VERSION>
+    nix build .#sundial-bridge-node
+    ```
+  </Tab>
+</Tabs>
+
+The Bridge Node CLI accepts a configuration file with the same structure as the Layer Node. Key bridge-specific flags:
+
+```text
+--topology FILEPATH               Path to the bridge topology file
+--database-path FILEPATH          State storage directory
+--socket-path FILEPATH            Path to the bridge node socket
+--watcher-socket-path-connect     Connect to watcher on local socket
+--config NODE-CONFIGURATION       Bridge node configuration file
+--status                          Show status & performance metrics
+```
+
+<Note>
+Bridge Node requirements differ depending on which bridging solution (Charms, Cardinal, or both) you integrate. Refer to the bridge-specific setup guides for credential and key management details.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Full Deployment Guide" icon="book" href="/operators/layer-node">
+    Step-by-step walkthrough of Layer Node configuration, database setup, and production hardening.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/operators/cli-reference">
+    Complete reference for all Sundial-Layer-Node and Sundial-Bridge-Node CLI commands and flags.
+  </Card>
+  <Card title="Fraud Proofs" icon="shield-check" href="/components/fraud-proofs">
+    Understand the 27 fraud proof types that Provers use to challenge invalid blocks — and what makes a block invalid.
+  </Card>
+  <Card title="Watcher Guide" icon="eye" href="/guides/watchers">
+    Many operators also run Watcher services to earn additional income and add their own layer of fraud detection.
+  </Card>
+</CardGroup>

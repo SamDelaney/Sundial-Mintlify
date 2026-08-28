@@ -1,47 +1,104 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Sundial Protocol in Minutes"
+sidebarTitle: "Quickstart"
+description: "Learn how to connect your wallet, claim testnet tokens, and make your first stake on the Sundial Protocol testnet in under 5 minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+The fastest way to experience Sundial Protocol is on the testnet. In the next few minutes you'll connect a supported wallet, claim free testnet sBTC from the faucet, and place your first stake on Sundial's Layer 2 — all without touching real funds.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+<Note>
+  The Sundial testnet uses **test tokens only**. Testnet sBTC and Bitcoin testnet3 coins have no monetary value. Nothing you do here affects real BTC, ADA, or money.
+</Note>
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Connect your wallet">
+    Sundial supports two wallet types depending on how you want to interact with the protocol:
 
-    ```bash
-    npm install your-package
-    ```
+    **Cardano wallets (for sBTC faucet and L2 staking)**
+
+    Install one of these browser extensions and create or restore a wallet:
+
+    | Wallet | Notes |
+    | --- | --- |
+    | [Eternl](https://eternl.io/) | Recommended — easy network switching |
+    | [Lace](https://www.lace.io/) | Recommended — official IOG wallet |
+    | [Typhon](https://typhonwallet.io/) | Full-featured, widely used |
+    | [Yoroi](https://yoroi-wallet.com/) | Mobile and browser support |
+    | [GeroWallet](https://gerowallet.io/) | DeFi-focused |
+    | [NuFi](https://nu.fi/) | Non-custodial, multi-chain |
+
+    Once installed, open the extension and switch its network from **Mainnet** to **Testnet** (or **Preprod**). Every wallet listed above supports this — the exact menu location varies, but look in **Settings** or the network name in the top bar.
+
+    **Bitcoin wallets (for the testnet dashboard)**
+
+    The Sundial dashboard also supports Bitcoin wallets via **Reown AppKit**. Use the **Connect Wallet** button on the dashboard to link a Bitcoin testnet3 wallet. This is optional — you don't need a Bitcoin wallet to claim faucet sBTC.
+
+    <Tip>
+      For full details on wallet setup, network switching, and troubleshooting, see the [Connect Wallet guide](/guides/connect-wallet).
+    </Tip>
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
-    ```
+  <Step title="Claim testnet sBTC from the faucet">
+    With your Cardano wallet switched to testnet, copy your **receive address** from the wallet's Receive screen. A valid testnet address always starts with `addr_test1`.
+
+    Then:
+
+    1. Go to [sundialprotocol.com/testnet/faucet](https://sundialprotocol.com/testnet/faucet).
+    2. Paste your `addr_test1…` address into the **Sundial testnet address** field.
+    3. Click **Request testnet sBTC**.
+
+    On success, the page shows:
+    - **Grant amount** — the testnet sBTC credited to your address.
+    - **Next eligible at** — when this address can claim again (each address has a cooldown).
+    - **Claim ID** and **Transaction hash** — reference IDs you can use to verify the claim.
+
+    No wallet connection or signature is required for this step — you only need to paste your address.
+
+    <Warning>
+      Your address must start with `addr_test1`. If your wallet is still on Mainnet, its address starts with `addr1` and the faucet will reject it. Switch to Testnet/Preprod first, then copy a fresh address.
+    </Warning>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
-    ```
+  <Step title="Navigate to the dashboard and stake">
+    Open the [Sundial dashboard](https://sundialprotocol.com/dashboard). Your connected Cardano wallet will show the testnet sBTC balance you just claimed.
+
+    To place a stake:
+
+    1. Select the staking product you want to try (**FIRE** for high-beta BTC exposure or **ICE** for a stable BTC-backed USD position).
+    2. Enter the amount of testnet sBTC you want to stake.
+    3. Review the estimated yield and confirm the transaction in your wallet extension.
+    4. Wait for the L2 transaction to be included in a block — this typically takes a few seconds.
+
+    <Info>
+      Sundial's L2 uses the same `addr_test1…` address format as the Cardano testnet, so your wallet extension confirms transactions using its normal signing flow.
+    </Info>
+  </Step>
+
+  <Step title="Monitor your position in the portfolio tab">
+    After staking, switch to the **Portfolio** tab in the dashboard. You'll see:
+
+    - Your active staking positions and the assets backing them.
+    - Accrued yield, updated as each block is committed.
+    - Option to withdraw your position when you're ready.
+
+    Your sBTC balance lives on Sundial's L2, not on the Cardano settlement L1, so it will not appear on standard Cardano block explorers. The wallet balance display and the dashboard portfolio view are the authoritative sources during the testnet phase.
   </Step>
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  Want to go deeper? The [Testnet Guide](/testnet-guide) covers network configuration, the `midgard` CLI tool for sending tokens from the terminal, and a full troubleshooting table for faucet errors.
 </Tip>
+
+## What's next
+
+<CardGroup cols={3}>
+  <Card title="Stake BTC" icon="bitcoin" href="/guides/stake-btc">
+    Walk through the full four-transaction BTC staking flow using the BTC Locker.
+  </Card>
+  <Card title="Stake ADA" icon="coins" href="/guides/stake-ada">
+    Deposit ADA into Sundial's L2 and start earning yield with your Cardano assets.
+  </Card>
+  <Card title="Faucet Details" icon="faucet" href="/guides/faucet">
+    Learn about faucet limits, cooldown windows, and how to troubleshoot claim errors.
+  </Card>
+</CardGroup>

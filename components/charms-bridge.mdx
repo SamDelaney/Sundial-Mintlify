@@ -1,0 +1,172 @@
+---
+title: "Charms Bridge: Trustless Bitcoin Cross-Chain Transfers"
+sidebarTitle: "Charms Bridge"
+description: "The Charms bridge enables trustless Bitcoin-to-Cardano transfers using zk-SNARK proofs (Groth16 over BLS12-381) verified directly on-chain via Plutus v3 smart contracts."
+---
+
+The Charms bridge is a cross-chain asset protocol that lets you move Bitcoin-native assets — called **Charms** — to Cardano (and other UTXO chains) without custodians, multisigs, or trusted relayers. A Charm is a programmable token that lives on top of a Bitcoin UTXO: it carries an app contract, a ZK proof of correctness, and arbitrary state data. When you beam a Charm cross-chain, you destroy it on Bitcoin and unlock a corresponding native token on the destination chain — with the entire authorization path enforced by on-chain cryptography rather than off-chain trust.
+
+## What Is a Charm?
+
+Charms are UTxO-native programmable assets inspired by Bitcoin metaprotocols like Ordinals and Runes, but extended with full app contract logic. Structurally, a Charm is an entry in an `app → data` mapping attached to a Bitcoin UTXO. Multiple Charms can coexist on a single UTXO, and each Charm carries its own app contract that defines its minting, burning, and transfer rules.
+
+Every Charms transaction contains a **spell** — Charms-related metadata encoded in an `OP_RETURN` output as a CBOR-serialized `(NormalizedSpell, Proof)` tuple. The proof is a Groth16 zk-SNARK attesting that the app contract was satisfied. Anyone can verify the proof; no one can fake a valid spell without actually satisfying the contract.
+
+## Protocol Versions
+
+Sundial supports two versions of the Charms bridge, selectable per transaction by a beacon NFT in the transaction's reference inputs.
+
+<Tabs>
+  <Tab title="V1 — Scrolls (ICP-Signed)">
+    Scrolls is the initial bridge version. Rather than verifying a ZK proof on-chain, it delegates authorization to a threshold-signing canister hosted on the Internet Computer Protocol (ICP).
+
+    **How it works:**
+    1. You construct a consuming transaction on the destination chain with a proof that the app rules were satisfied.
+    2. You submit the transaction to the ICP Scrolls verifier canister.
+    3. The canister re-verifies the ZK proof independently from the raw transaction — it does not trust the caller.
+    4. The canister threshold-signs the transaction and returns a witnessed transaction hex.
+    5. You submit the witnessed transaction; the Scrolls validator on Cardano confirms the ICP canister's signature.
+
+    **Trust model:** Scrolls is a trusted-verifier model. You trust the Scrolls ICP canister consortium, not any single party. It is suitable for early deployments and has been live on Sundial testnet since the M5.2 milestone.
+  </Tab>
+  <Tab title="V2 — Groth16 (Fully Trustless)">
+    V2 eliminates the trusted verifier entirely. A Groth16 zk-SNARK proof is verified directly on Cardano using BLS12-381 pairings available as native Plutus v3 builtins — no ICP, no multisig, no trusted third party.
+
+    **How it works:**
+    1. You construct a consuming transaction on Cardano with a `SpellDatum` attached to the last output.
+    2. An off-chain prover generates a Groth16 proof that the Charms app contract was satisfied.
+    3. You attach the `SpellDatum { spell, proof }` to the transaction and submit it.
+    4. The `staking_groth16` validator runs on-chain: it extracts the spell, checks the protocol version, serializes public inputs via `CBOR(spell_vk, spell)`, and calls `groth_verify`.
+    5. If the pairing equation holds, the transaction is accepted and tokens are minted or burned.
+
+    **Trust model:** Fully trustless. The on-chain verifier is the sole source of truth.
+  </Tab>
+</Tabs>
+
+## How Beaming Works
+
+"Beaming" is the Charms term for a cross-chain transfer. To beam a Charm from Bitcoin to Cardano, you execute a sequence spanning both chains:
+
+<Steps>
+  <Step title="Prepare a destination on Cardano">
+    Submit a Cardano transaction that creates a placeholder UTxO — a small output at the address where your beamed token will land — and a separate collateral UTxO. This establishes the exact on-chain reference that the Bitcoin-side commitment will name.
+  </Step>
+  <Step title="Mint or locate a Charm on Bitcoin">
+    If you do not already hold a Charm, mint one on Bitcoin testnet by proving a `mint-nft` spell, broadcasting the transaction, and waiting for confirmation. The Charm is identified by its app ID at a specific output index.
+  </Step>
+  <Step title="Commit cross-chain on Bitcoin (beam-send)">
+    Broadcast a Bitcoin transaction that destroys the Charm (spends its UTXO) and encodes a cryptographic commitment to the Cardano placeholder in its `beamed_outs` field. The commitment is:
+
+    ```
+    SHA-256(placeholder_txid_byte_reversed ‖ output_index ‖ nonce)
+    ```
+
+    This writes the cross-chain intent into the Bitcoin ledger itself — not in a database, but in a confirmed Bitcoin transaction.
+  </Step>
+  <Step title="Prove and receive on Cardano (beam-receive)">
+    A worker fetches the Bitcoin Merkle proof and header chain, then calls the Charms prover with the finality bundle. The prover generates a `beam-receive` transaction on Cardano. The transaction is either:
+    - **V1 (Scrolls):** submitted to the ICP canister for threshold-signing, then broadcast.
+    - **V2 (Groth16):** broadcast directly with the Groth16 proof attached.
+
+    Once the transaction is applied on the Cardano L2 node, your beamed BTC is spendable.
+  </Step>
+</Steps>
+
+## Milestone 5.2 Live Evidence
+
+The beaming mechanism was demonstrated end-to-end on real public testnets in July 2026, with every transaction independently verifiable against public infrastructure.
+
+<CardGroup cols={2}>
+  <Card title="Charm Minted on Bitcoin" icon="bitcoin">
+    **Bitcoin testnet4 · Block 143,987**
+
+    A `mint-nft` spell was proven, signed, and broadcast on Bitcoin testnet4, creating a Charm at output 0.
+
+    Txid: `3be09f7f…c693d4cc`
+
+    Verified independently by both [mempool.space](https://mempool.space/testnet4/tx/3be09f7f1539f3a62562dceea80278e28b57882b8803a2418862f2a2c693d4cc) and the [Charms Explorer](https://explorer.charms.dev).
+  </Card>
+  <Card title="Destination Prepared on Cardano" icon="layer-group">
+    **Cardano preprod · Block 4,936,319**
+
+    A Cardano transaction split one funded UTxO into a beam-receive placeholder (5 ADA) and a collateral UTxO (5 ADA).
+
+    Txid: `8c287322…5fd9e55`
+
+    Verified via [Koios preprod API](https://preprod.cardanoscan.io/transaction/8c287322a56b066a0e6eca33f6376483254ec51e41c6f9f208fb314135fd9e55).
+  </Card>
+  <Card title="Cross-Chain Commitment (beam-send)" icon="arrow-right-arrow-left">
+    **Bitcoin testnet4 · Block 144,111**
+
+    A Bitcoin transaction destroyed the Charm from step 1 and committed — in the Bitcoin ledger — to the exact Cardano placeholder from step 2.
+
+    Txid: `53245515…67ea162`
+
+    Confirmed after the Cardano placeholder (correct chronological order enforced by the protocol).
+  </Card>
+  <Card title="Threshold Authorization (Scrolls)" icon="shield-check">
+    **ICP mainnet — Scrolls canister**
+
+    Scrolls independently re-verified the ZK proof from the raw transaction and issued a threshold signature over the receive transaction. `Result: Ok(<witnessed tx hex>)`.
+
+    Canister: `tty7k-waaaa-aaaak-qvngq-cai`
+  </Card>
+</CardGroup>
+
+## Cardano Smart Contracts
+
+The bridge deploys four Plutus v3 smart contracts on Cardano. They work together through a modular, version-agnostic routing pattern.
+
+<Accordion title="main — Routing Validator">
+A thin routing script. It accepts a redeemer specifying the beacon NFT asset name for the desired protocol version, locates the corresponding beacon UTxO in the transaction's reference inputs, reads the versioned validator's script hash from the `reference_script` field, and asserts that the versioned validator is invoked as a staking withdrawal (`Withdraw(Script(charms_validator_sh))`) in the same transaction.
+
+`main` contains no application-level validation logic. All substantive checks — signature verification or ZK proof verification — are delegated to the versioned validator.
+</Accordion>
+
+<Accordion title="scrolls — V1 ICP Signature Validator">
+Verifies that the ICP Scrolls threshold-signer canister has co-signed the transaction. The redeemer carries the verifier's signature. This validator is invoked by `main` when the Scrolls beacon NFT is present in the reference inputs.
+</Accordion>
+
+<Accordion title="staking_groth16 — V2 Trustless Validator">
+Verifies a Groth16 zk-SNARK proof using BLS12-381 pairings as Plutus builtins. The validator:
+
+1. Reads the `SpellDatum { spell, proof }` from the last output of the transaction.
+2. Checks that `spell.version == charms_version` (baked in at deployment).
+3. Serializes public inputs as `SHA256(CBOR(spell_vk, spell))`.
+4. Runs the Groth16 verification equation:
+
+```
+e(πA, πB) = e(α, β) · e(Σ xᵢ·ICᵢ, γ) · e(πC, δ)
+```
+
+If the equation does not hold, the transaction fails. No trusted party is involved at any step.
+</Accordion>
+
+<Accordion title="free_mint — Beacon Token Minting Policy">
+Manages the creation of beacon NFTs that enable on-chain discoverability and verification of the versioned validators. Each protocol version has its own beacon NFT; the asset name acts as a selector that routes `main` to the correct validator.
+</Accordion>
+
+## Security Properties
+
+<CardGroup cols={2}>
+  <Card title="No Shared UTxOs" icon="lock">
+    Each Charm occupies its own UTXO. There are no shared liquidity pools or shared state UTxOs that an attacker can contend for. Bitcoin's UTXO model provides base-layer replay protection.
+  </Card>
+  <Card title="Version Binding" icon="tag">
+    The `charms_version` parameter is baked into the `staking_groth16` script at deployment. A proof generated for a different circuit version cannot be submitted to a different validator deployment — cross-version replay is impossible.
+  </Card>
+  <Card title="Datum Position Enforcement" icon="file-code">
+    The V2 validator always reads the **last** output of the transaction as the spell output. Off-chain tooling must place the `SpellDatum` at this position; an incorrectly positioned datum fails the `expect` check and rejects the transaction.
+  </Card>
+  <Card title="Mock Proof Isolation" icon="flask">
+    The `NormalizedSpell` type includes a `mock` flag. Because this flag is part of the serialized public inputs, a proof generated with `mock: true` cannot be submitted as `mock: false`. Test proofs cannot appear in production transactions.
+  </Card>
+</CardGroup>
+
+## Cardinal Bridge (Alternative Path)
+
+For users who prefer a different security model, the **Cardinal bridge** provides an alternative cross-chain path using **MuSig2 + HTLC + BitVMX fraud proofs**. Rather than ZK proof verification, Cardinal relies on a multi-party signature scheme combined with hash time-locked contracts and an optimistic fraud proof layer backed by BitVMX. Cardinal is suited for situations where ZK proving overhead is a concern, at the cost of a more complex liveness and trust model.
+
+<Note>
+  The Charms V2 Groth16 bridge is the path used by Alchemy (FIRE and ICE). All reserve constraint enforcement for those assets runs through the `staking_groth16` validator. See the [Alchemy](/components/alchemy) page for details.
+</Note>

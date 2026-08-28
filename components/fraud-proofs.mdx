@@ -1,0 +1,164 @@
+---
+title: "Fraud Proofs: Challenging Invalid L2 Blocks"
+sidebarTitle: "Fraud Proofs"
+description: "Any network participant can submit a fraud proof against an invalid Sundial L2 block. Learn the fraud proof types, multi-step computation threads, and the reward mechanism."
+---
+
+Sundial is an optimistic rollup: operators commit L2 block headers to Cardano without executing every transaction on L1. The system assumes committed blocks are valid by default and only intervenes when someone proves otherwise. Fraud proofs are the cryptographic mechanism that makes this assumption safe. If an operator commits a block containing invalid transactions — a double-spend, a non-existent input, or a bad validity range — any network participant can submit a fraud proof, have the block removed, and claim the operator's entire bond as a reward.
+
+## Why Fraud Proofs Are Needed
+
+In a traditional blockchain, every node re-executes every transaction and rejects invalid ones. On an optimistic rollup, L1 only stores block headers. L1 cannot verify every transaction — that is the source of the throughput gains (2,000–5,000 TPS on Sundial's L2). Instead, the system relies on **economic incentives**: operators post a bond before they can commit blocks, and that bond is slashed if they include invalid transactions. Fraud proofs are how the slashing is triggered.
+
+The maturity window — the period between a block being committed and it becoming final — gives watchers enough time to download the block body from the DA layer, replay the transactions, and submit a fraud proof if anything is wrong.
+
+## Who Can Submit a Fraud Proof
+
+Anyone can submit a fraud proof. You do not need a special role or registration. However, generating a valid fraud proof requires:
+
+- Access to the block body from the Data Availability layer.
+- The ability to construct and submit Cardano transactions.
+- In some cases, running a multi-step computation thread to completion.
+
+**Provers** are watcher nodes specifically designed and incentivized to monitor the State Queue and submit fraud proofs automatically. Running a Prover earns you the operator bond when fraud is found, and Proof of Diligence rewards for ongoing monitoring even when no fraud occurs. See [Watchers](/guides/watchers) to learn how to set one up.
+
+## Fraud Proof Types
+
+Sundial supports a comprehensive catalogue of fraud proof types. Each type targets a specific class of invalid block behavior.
+
+<Accordion title="Input Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **DOUBLE-SPEND** | Transaction `t` attempted to spend input `i`, which was already spent by another transaction in the same block. |
+  | **NO-INPUT** | Transaction `t` attempted to spend UTxO `i` that does not exist or was spent in a previous block. |
+  | **INPUT-NO-IDX** | Transaction `t` attempted to spend input `i`, which did not exist at all (no matching transaction ID at that index). |
+  | **WITHDRAWN-INPUT** | Transaction `t` attempted to spend input `i`, which was already consumed by a withdrawal transaction. |
+  | **DOUBLE-WITHDRAW** | Withdrawal `W_n` attempted to spend an input already withdrawn by `W_1`. |
+  | **ZERO-INPUT** | Transaction `t` is in the ledger with zero inputs (`|inputs(t)| = 0`). |
+</Accordion>
+
+<Accordion title="Validity Range Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **INVALID-RANGE** | Transaction `t` has a time-validity range that does not overlap with its containing block's event interval. |
+</Accordion>
+
+<Accordion title="Fee Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **MIN-FEE** | Transaction `t` is in the ledger while `fee(t) < min_fee(t)`. |
+</Accordion>
+
+<Accordion title="Signature Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **MISSING-REQ-SIGNER** | Transaction `t` does not show a required signer. |
+  | **NON-REQ-SIGNER** | Transaction `t` shows an additional, non-required signer. |
+  | **INVALID-SIGNER** | Transaction `t` has an invalid signer. |
+  | **MISSING-SIGNATURE** | A required signature corresponding to signer `s` is missing. |
+</Accordion>
+
+<Accordion title="Native Script Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **MISSING-NATIVE-SCRIPT** | A required native script corresponding to `s` is missing. |
+  | **NATIVE-SCRIPT-INVALID** | Native script `s` validation fails. |
+</Accordion>
+
+<Accordion title="Value Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **VALUE-NOT-PRESERVED** | Transaction `t` does not preserve value — outputs exceed inputs. |
+  | **ADA-MINTED** | Transaction `t` mints ADA, which is not permitted. |
+  | **NEGATIVE-OUTPUT-VALUE** | Transaction `t` has an output with a negative value. |
+  | **MIN-SAT-TX** | An output of transaction `t` does not satisfy the minimum Satoshi value requirement. |
+  | **MIN-SAT-UTXO** | A UTxO `u` in the block's UTxO set does not satisfy the minimum Satoshi value requirement. |
+</Accordion>
+
+<Accordion title="Network ID Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **OUTPUT-NETWORK-UTXO** | UTxO `u` address has the wrong network ID. |
+  | **OUTPUT-NETWORK-TX** | An output of transaction `t` has the wrong network ID. |
+  | **TRANSACTION-NETWORK** | Transaction `t` itself has the wrong network ID. |
+</Accordion>
+
+<Accordion title="Reference Input Fraud Proofs">
+  | Type | Description |
+  |---|---|
+  | **NO-REFERENCE-INPUT** | Transaction `t` attempted to reference input `i` that does not exist or was spent in a previous block. |
+  | **REFERENCE-INPUT-NO-IDX** | Transaction `t` attempted to reference input `i` that was not produced by the transaction matching the tx hash of `i`. |
+</Accordion>
+
+## Multi-Step Computation Threads
+
+Cardano imposes a transaction size limit and a per-transaction computation budget. Some fraud proofs — particularly those that involve replaying large transactions or walking Merkle trees — require more computation than fits in a single Cardano transaction. Sundial handles this with **computation threads**.
+
+A computation thread is a sequence of on-chain Cardano transactions that collectively build up and verify a fraud proof. Each step carries forward a `StepDatum` containing the intermediate state accumulated so far:
+
+```
+StepDatum<State> {
+  fraud_prover: VerificationKeyHash,  -- who started the thread
+  data: Option<State>,                -- accumulated proof state
+}
+```
+
+The thread is initiated by minting a computation thread token (identifying the fraud category and the fraudulent block's header hash). Each subsequent step spends the thread UTxO and produces a new one with updated state, using the `Continue(args)` redeemer. When the final step is complete, the `Success` redeemer burns the computation thread token and mints the fraud proof token — which is then used by the State Queue's `RemoveFraudulentBlockHeader` operation to slash the operator and remove the block.
+
+If the computation thread is interrupted — by an error, a timeout, or the prover going offline — any participant can burn the thread with a `Cancel` redeemer and reclaim the associated UTxO value. The fraud prover must restart the thread from the beginning.
+
+<Info>
+  Prover software handles multi-step threads automatically. If you are running a Prover node, you do not need to manage individual steps manually — the Prover service monitors the State Queue, initiates threads, submits each step, and claims the reward on completion.
+</Info>
+
+The following fraud proof types use multi-step computation threads due to their computational complexity:
+
+- **DOUBLE-SPEND**: 3 steps — verify the first transaction's inclusion and inputs root, verify the second transaction's inclusion, prove the shared input.
+- **NO-INPUT** (Non-Existent Input): 2 steps — verify the transaction's inclusion, prove the input does not exist in the UTxO set.
+- **INPUT-NO-IDX** (Non-Existent Input No Index): 4 steps — extended proof of non-existence without an index reference.
+- **INVALID-RANGE**: 2 steps — verify the transaction's inclusion, prove the validity range falls outside the block interval.
+
+## The Reward Mechanism
+
+Successfully completing a fraud proof earns the **entire operator bond** deposited by the fraudulent operator. The bond is substantial by design — operators must stake a significant amount to participate, which aligns their economic interest with honest block production.
+
+<Steps>
+  <Step title="Detect fraud">
+    Your Prover monitors the State Queue and DA layer. When it detects an invalid block (for example, a double-spend), it identifies the fraudulent block's header hash and the specific transaction IDs involved.
+  </Step>
+  <Step title="Initiate the computation thread">
+    The Prover mints a computation thread token on Cardano, identifying the fraud category (from the Fraud Proof Catalogue) and the target block's header hash. This locks in your claim as the `fraud_prover`.
+  </Step>
+  <Step title="Execute each step">
+    The Prover submits each step transaction in sequence. Each step spends the previous thread UTxO, advances the intermediate state, and produces a new UTxO. The Prover continues until the final step.
+  </Step>
+  <Step title="Claim the reward">
+    On the final step, the Prover mints the fraud proof token. The State Queue's `RemoveFraudulentBlockHeader` operation burns the operator's bond and credits the reward to your `fraud_prover` address.
+  </Step>
+</Steps>
+
+## Proof of Diligence
+
+Fraud detection is valuable even when no fraud occurs. Sundial rewards Provers for continuous monitoring through a **Proof of Diligence** mechanism. By demonstrating that you have inspected and verified blocks in the State Queue — even blocks that turned out to be valid — you earn ongoing rewards proportional to your monitoring activity.
+
+This means running a Prover is not a zero-income activity unless fraud happens to be present. You earn for the work of watching.
+
+<Tip>
+  To participate as a Prover and earn rewards, see the [Watchers guide](/guides/watchers). The Watcher Toolkit includes a modular Prover reference implementation ready to deploy with minimal configuration — you supply your Cardano credentials, point it at a DA node, and the Prover handles the rest automatically.
+</Tip>
+
+## Fraud Proof Catalogue
+
+The on-chain **Fraud Proof Catalogue** contract maintains a Merkle root over the set of valid fraud proof category IDs. When a computation thread is initiated, the `Init` redeemer includes a Merkle membership proof demonstrating that the claimed fraud category exists in the catalogue. This prevents provers from inventing fake fraud categories and wasting chain resources.
+
+```
+Init {
+  fraud_category_id: ByteArray,         -- 4-byte category ID
+  fraud_category: ScriptHash,           -- the specific fraud proof contract
+  fraud_category_membership_proof: Proof,
+  fraud_proof_catalogue_ref_input_index: Int,
+  ...
+}
+```
+
+The Fraud Proof Catalogue is a reference input — it is read but not modified during fraud proof submission. Protocol upgrades that add new fraud proof types update the catalogue's Merkle root through Sundial's governance process.

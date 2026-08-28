@@ -1,0 +1,192 @@
+---
+title: "Block API: Query Sundial L2 Block Data"
+sidebarTitle: "Blocks"
+description: "GET /block retrieves L2 block data including the block header, MPT root hashes, and transaction list. GET /stateQueue returns the current state queue on Cardano L1."
+---
+
+Two endpoints expose block-level data on the Sundial L2. Use `GET /block` to retrieve the transactions included in a specific block by its header hash, and `GET /stateQueue` to inspect the linked list of committed block headers that lives on Cardano L1. Together they give you visibility into both individual block contents and the overall progression of the L2 chain.
+
+<Note>
+  Both endpoints are available on full (monolith) nodes. `GET /stateQueue` is a full-node-only endpoint; the related `GET /stateQueue/root-unit-diagnostics` is also served by `api`-role nodes and is useful for health monitoring without the full state-queue fetch.
+</Note>
+
+---
+
+## GET /block — Query Block Transactions
+
+Retrieve the list of transaction hashes included in a Sundial L2 block, identified by its 56-character header hash. The node looks up the block in `BlocksTxsDB` and returns the hashes of every transaction committed to that block.
+
+### Query Parameters
+
+<ParamField query="header_hash" type="string" required>
+  The 56-character hex block header hash. Must be a valid hex string of exactly 56 characters — not 64 (which is a transaction hash length). Block header hashes on Sundial are 28 bytes, represented as 56 hex characters.
+</ParamField>
+
+### Example
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/block?header_hash=a3f9e2b1c4d7..."
+```
+
+### Responses
+
+<Tabs>
+  <Tab title="Success (200)">
+    ```json
+    {
+      "hashes": [
+        "9e4f3a2b1c0d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f",
+        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
+      ]
+    }
+    ```
+
+    Each entry in `hashes` is a 64-character hex transaction hash. An empty `hashes` array indicates a block with no transactions (an empty block). Use each hash with `GET /tx` to retrieve the full CBOR of individual transactions.
+  </Tab>
+  <Tab title="Invalid Hash (400)">
+    ```json
+    { "error": "Invalid block hash: <header_hash>" }
+    ```
+
+    Returned when `header_hash` is missing, not a valid hex string, or not exactly 56 characters long.
+  </Tab>
+  <Tab title="Not Found">
+    An unrecognized header hash returns an empty `hashes` array rather than a `404`. If you receive an empty array for a hash you expect to exist, verify the hash length (56 hex characters) and confirm the block has been committed.
+  </Tab>
+</Tabs>
+
+### Fetching Full Transactions for a Block
+
+Combine `GET /block` with `GET /tx` to retrieve complete transaction data for every transaction in a block:
+
+```typescript
+async function getBlockTransactions(
+  headerHash: string
+): Promise<string[]> {
+  const blockRes = await fetch(
+    `https://rpc.testnet.sundialprotocol.com/block` +
+      `?header_hash=${encodeURIComponent(headerHash)}`
+  );
+  const { hashes } = await blockRes.json();
+
+  const txCbors = await Promise.all(
+    hashes.map(async (txHash: string) => {
+      const txRes = await fetch(
+        `https://rpc.testnet.sundialprotocol.com/tx?tx_hash=${txHash}`
+      );
+      const { tx } = await txRes.json();
+      return tx; // hex-cbor
+    })
+  );
+
+  return txCbors;
+}
+```
+
+---
+
+## GET /stateQueue — Query the L1 State Queue
+
+Fetch the current state-queue linked list from Cardano L1. The state queue is an on-chain data structure that tracks every block header committed by L2 operators. Each entry in the queue corresponds to one committed L2 block and records the header hash that anchors it to the Sundial chain.
+
+The endpoint fetches state-queue UTxOs from the settlement L1 via the Sundial SDK, logs a visual representation server-side, and returns the non-empty header keys.
+
+### Example
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/stateQueue"
+```
+
+### Response
+
+```json
+{
+  "headers": [
+    "a3f9e2b1c4d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3",
+    "b4a0f3c2d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
+  ]
+}
+```
+
+Each entry in `headers` is a 56-character hex block header hash representing a committed block on the state queue. The list is ordered from oldest to newest as stored in the on-chain linked list.
+
+<Tip>
+  Cross-reference the header hashes from `GET /stateQueue` with `GET /block` to map each committed block to its constituent transactions.
+</Tip>
+
+---
+
+## GET /stateQueue/root-unit-diagnostics — State Queue Health
+
+Check the health of the state-queue root unit — the single on-chain token that anchors the entire state-queue linked list. This endpoint is available on both full nodes and `api`-role nodes, making it suitable for automated monitoring and alerting.
+
+### Example
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/stateQueue/root-unit-diagnostics"
+```
+
+### Responses
+
+<Tabs>
+  <Tab title="Healthy (200)">
+    ```json
+    {
+      "status": "ok",
+      "resetInProgress": false,
+      "stateQueueAddress": "addr1...",
+      "rootUnit": "<policy-id+asset-name>",
+      "count": 1,
+      "outRefs": ["<txHash>#<outputIndex>"]
+    }
+    ```
+
+    A `status` of `"ok"` with `count: 1` means the state queue has exactly one root unit, which is the healthy state.
+  </Tab>
+  <Tab title="Invalid (200)">
+    ```json
+    {
+      "status": "invalid",
+      "resetInProgress": false,
+      "stateQueueAddress": "addr1...",
+      "rootUnit": "<policy-id+asset-name>",
+      "count": 0,
+      "outRefs": []
+    }
+    ```
+
+    A `status` of `"invalid"` with `count` not equal to `1` (zero or more than one root unit) indicates the state queue needs attention. Contact the Sundial team or consult the operator repair runbook.
+  </Tab>
+  <Tab title="Provider Error (503)">
+    ```json
+    {
+      "status": "error",
+      "cause": "L1 provider request timed out"
+    }
+    ```
+
+    Returned when the L1 provider query fails. This indicates a transient connectivity issue between the node and its Cardano L1 backend — retry after a short delay.
+  </Tab>
+</Tabs>
+
+---
+
+## Block Lifecycle
+
+Understanding where a block sits in its lifecycle helps you interpret state-queue and block query results:
+
+<Accordion title="Pending — committed to L1, awaiting maturity">
+  An operator has submitted the block header to the Cardano L1 state queue, but the block has not yet reached its maturity window. During this period, Watchers (Provers) can submit fraud proofs if the block is invalid. The header hash is present in `GET /stateQueue` output.
+</Accordion>
+
+<Accordion title="Mature — eligible for merging into confirmed state">
+  The maturity window has elapsed without a successful fraud proof. The block's transactions are finalized and its outputs are spendable. The operator can now trigger a merge to consolidate the block into confirmed state.
+</Accordion>
+
+<Accordion title="Merged — incorporated into confirmed ledger state">
+  The block has been merged into the Sundial confirmed state. Its transactions are permanently recorded in `BlocksTxsDB` and reachable via `GET /block`.
+</Accordion>
+
+<Info>
+  The Sundial L2 uses an optimistic rollup model — blocks are considered valid by default and only rolled back if a fraud proof is successfully submitted during the maturity window. This means a transaction visible in a pending block is not yet finalized. Wait for the block to reach mature or merged status before treating outputs as settled.
+</Info>

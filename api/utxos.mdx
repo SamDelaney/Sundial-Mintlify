@@ -1,0 +1,157 @@
+---
+title: "UTxO Query API: Fetch L2 Unspent Outputs"
+sidebarTitle: "UTxOs"
+description: "GET /utxos returns the current UTxO set for an address on the Sundial L2. Returns CBOR-encoded UTxO data including lovelace and multi-asset balances."
+---
+
+The `/utxos` endpoint lets you query unspent transaction outputs on the Sundial L2 for any address. The response reflects the current mempool-ledger state — meaning confirmed UTxOs and any unconfirmed outputs from pending mempool transactions are included together. Use this endpoint to source inputs when building L2 transactions before submitting them via `POST /submit`.
+
+<Note>
+  `GET /utxos` is available on full (monolith) nodes only. It is not served by `api`-role nodes in horizontally scaled deployments. Direct your UTxO queries to a full-node URL such as `https://rpc.testnet.sundialprotocol.com`.
+</Note>
+
+---
+
+## GET /utxos — Query UTxO Set
+
+Return all spendable unspent transaction outputs locked at a given address on the Sundial L2.
+
+### Query Parameters
+
+<ParamField query="address" type="string" required>
+  Bech32 Cardano address to query. On testnet, addresses must start with `addr_test1`. The address must parse successfully and carry a valid payment credential — script addresses and addresses without payment credentials are rejected.
+</ParamField>
+
+### Example
+
+```bash
+curl "https://rpc.testnet.sundialprotocol.com/utxos?address=addr_test1qp..."
+```
+
+### Responses
+
+<Tabs>
+  <Tab title="Success (200)">
+    The response contains a `utxos` array. Each entry carries the raw CBOR hex for the output reference (`outref`) and the full transaction output (`value`). Both fields are hex-encoded CBOR — decode them with the Cardano Multiplatform Library (CML) or any compatible library.
+
+    ```json
+    {
+      "utxos": [
+        {
+          "outref": "<hex-cbor-output-reference>",
+          "value": "<hex-cbor-transaction-output>"
+        },
+        {
+          "outref": "<hex-cbor-output-reference>",
+          "value": "<hex-cbor-transaction-output>"
+        }
+      ]
+    }
+    ```
+
+    An address with no spendable UTxOs returns an empty array:
+
+    ```json
+    { "utxos": [] }
+    ```
+  </Tab>
+  <Tab title="Invalid Address Type (400)">
+    ```json
+    { "error": "Invalid address type: <address>" }
+    ```
+
+    Returned when the `address` parameter is missing or is not a string.
+  </Tab>
+  <Tab title="Invalid Address Format (400)">
+    ```json
+    { "error": "Invalid address format: <address>" }
+    ```
+
+    Returned when the address fails bech32 parsing or has no payment credential.
+  </Tab>
+  <Tab title="General Parse Failure (400)">
+    ```json
+    { "error": "Invalid address: <address>" }
+    ```
+
+    Returned for any other address parsing failure.
+  </Tab>
+</Tabs>
+
+---
+
+## Decoding UTxO Data
+
+UTxO output references and transaction outputs are returned as CBOR hex strings. To work with them in TypeScript, use the Cardano Multiplatform Library:
+
+```typescript
+import { CML, coreToUtxo } from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
+
+const res = await fetch(
+  "https://rpc.testnet.sundialprotocol.com/utxos" +
+    "?address=addr_test1qp..."
+);
+const { utxos } = await res.json();
+
+const decoded = utxos.map(({ outref, value }: { outref: string; value: string }) =>
+  coreToUtxo(
+    CML.TransactionUnspentOutput.new(
+      CML.TransactionInput.from_cbor_hex(outref),
+      CML.TransactionOutput.from_cbor_hex(value)
+    )
+  )
+);
+
+for (const utxo of decoded) {
+  console.log("TxHash:     ", utxo.txHash);
+  console.log("Output Idx: ", utxo.outputIndex);
+  console.log("Lovelace:   ", utxo.assets.lovelace.toString());
+}
+```
+
+---
+
+## Using UTxOs to Build Transactions
+
+The standard workflow for building and submitting an L2 transaction is:
+
+<Steps>
+  <Step title="Fetch UTxOs">
+    Call `GET /utxos` with the sender's address to retrieve spendable outputs.
+  </Step>
+  <Step title="Select inputs">
+    Choose one or more UTxOs whose combined value covers your output amount plus the minimum fee (`minFeeA: 44`, `minFeeB: 155381`).
+  </Step>
+  <Step title="Build the transaction">
+    Use Lucid Evolution with a custom `MidgardNodeProvider` that routes `getUtxos` calls to this endpoint. See the [Transactions](/api/transactions) page for a full provider implementation.
+  </Step>
+  <Step title="Sign and submit">
+    Sign the transaction with your private key or a CIP-30 browser wallet, then submit via `POST /submit`.
+  </Step>
+</Steps>
+
+<Tip>
+  The Sundial L2 uses the same Cardano transaction format as the settlement layer. Any library that speaks Cardano CBOR — Lucid Evolution, Mesh, or raw CML — works for building transactions once you replace the provider with one that talks to the Sundial node.
+</Tip>
+
+---
+
+## Address Validation Rules
+
+The node applies a three-tier validation to the `address` parameter:
+
+<Accordion title="Tier 1 — Type check">
+  The `address` parameter must be a string. Any other type (number, boolean, missing) returns `400 {"error": "Invalid address type: <address>"}`.
+</Accordion>
+
+<Accordion title="Tier 2 — Bech32 parse and payment credential check">
+  The address must successfully parse through Lucid's `getAddressDetails` and must carry a payment credential. Addresses without a payment credential — such as bare stake addresses — are rejected with `400 {"error": "Invalid address format: <address>"}`.
+</Accordion>
+
+<Accordion title="Tier 3 — General parse fallback">
+  Any remaining parse failure returns `400 {"error": "Invalid address: <address>"}`. This covers malformed bech32 strings, incorrect network prefixes, and similar issues.
+</Accordion>
+
+<Warning>
+  Standard Cardano L1 providers (Blockfrost, Kupmios, Maestro) return UTxOs from the Cardano mainnet or preprod L1 — they have no visibility into the Sundial L2 ledger. Always query `GET /utxos` on the Sundial node directly to retrieve L2 UTxOs.
+</Warning>

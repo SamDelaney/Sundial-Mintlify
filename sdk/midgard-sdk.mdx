@@ -1,0 +1,280 @@
+---
+title: "Midgard SDK: TypeScript Library for Sundial L2"
+sidebarTitle: "Midgard SDK"
+description: "The official TypeScript SDK for Sundial L2. Build deposits, withdrawals, tx orders, and fraud proofs using Effect and Lucid Evolution."
+---
+
+`@al-ft/midgard-sdk` is the official off-chain TypeScript library for interacting with the Sundial L2 (Midgard). It is the same library the Sundial node uses internally, so anything the node's HTTP API can trigger, you can build directly with the SDK. The library is built on two foundational dependencies: [Effect](https://effect.website/) for typed, composable error handling, and [Lucid Evolution](https://lucid.spacebudz.io/) for Cardano transaction construction. Every public function returns either a plain `Promise` or an `Effect` blueprint, giving you a choice of programming style.
+
+<Note>
+  Version 0.1.0 is distributed as a `pnpm repack` tarball — not a published npm package. Add it to your project by pointing your package manager at the local tarball path. See the [installation steps](#installation) below.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Bundle the tarball">
+    Clone the `sundial-monorepo` repository and bundle the SDK into a local tarball:
+
+    ```bash
+    cd demo/midgard-sdk
+    pnpm install
+    pnpm repack
+    ```
+
+    This produces `al-ft-midgard-sdk-0.1.0.tgz` inside the package directory.
+  </Step>
+  <Step title="Add to your project">
+    Reference the tarball in your `package.json`:
+
+    <CodeGroup>
+      ```json npm
+      {
+        "dependencies": {
+          "@al-ft/midgard-sdk": "file:~/path/to/midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz"
+        }
+      }
+      ```
+      ```bash pnpm
+      pnpm add @al-ft/midgard-sdk@file:~/path/to/midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz
+      ```
+    </CodeGroup>
+  </Step>
+  <Step title="Initialize Lucid Evolution">
+    The SDK requires a `LucidEvolution` instance. Create one against your preferred Cardano provider before calling any SDK function:
+
+    ```typescript
+    import { Lucid, Blockfrost } from '@lucid-evolution/lucid';
+
+    const lucid = await Lucid(
+      new Blockfrost('https://cardano-preprod.blockfrost.io/api/v0', 'YOUR_PROJECT_ID'),
+      'Preprod'
+    );
+
+    // Attach a wallet
+    lucid.selectWallet.fromSeed('your wallet seed phrase here');
+    ```
+  </Step>
+</Steps>
+
+## Core Modules
+
+The SDK is organized into vertical modules. All names are globally unique, so you can either import the entire namespace or import individual functions.
+
+<CardGroup cols={2}>
+  <Card title="user-events/deposit" icon="arrow-down-to-bracket">
+    Construct and fetch L2 deposit event UTxOs. A deposit places ADA into the Sundial deposit validator on L1, which the sequencer picks up and credits on L2.
+  </Card>
+  <Card title="user-events/withdrawal" icon="arrow-up-from-bracket">
+    Construct L2 withdrawal orders. A withdrawal burns the L2 UTxO and mints a withdrawal claim redeemable on L1 after the challenge window.
+  </Card>
+  <Card title="user-events/tx-order" icon="list-ordered">
+    Post a transaction order directly to L1 for guaranteed inclusion in the next L2 block, bypassing the node's mempool. Use this when low-latency finality matters.
+  </Card>
+  <Card title="hub-oracle" icon="circle-nodes">
+    Query the Hub Oracle UTxO for authoritative protocol policy IDs, validator addresses, and protocol parameters. Pass the result as a reference input in transactions.
+  </Card>
+  <Card title="scheduler" icon="calendar-clock">
+    Query the operator scheduling state to determine which operator is currently authorized to produce blocks.
+  </Card>
+  <Card title="state-queue" icon="layer-group">
+    Interact with the L2 state queue linked list — commit new blocks, merge confirmed state, and read the current queue head.
+  </Card>
+  <Card title="fraud-proof" icon="shield-halved">
+    Construct and submit multi-step fraud proofs against invalid blocks. Covers double-spend, invalid range, non-existent input, and computation-thread dispute programs.
+  </Card>
+  <Card title="active/registered/retired-operators" icon="users">
+    Manage the operator directory lifecycle: register, activate, and retire Operator nodes.
+  </Card>
+</CardGroup>
+
+## Usage Examples
+
+### Constructing a Deposit
+
+A deposit locks ADA in the Sundial deposit validator on L1. The sequencer syncs the event and credits the amount to your L2 address at the next block boundary.
+
+```typescript
+import * as SDK from '@al-ft/midgard-sdk';
+import { Lucid, Blockfrost } from '@lucid-evolution/lucid';
+
+const lucid = await Lucid(
+  new Blockfrost('https://cardano-preprod.blockfrost.io/api/v0', process.env.BF_KEY),
+  'Preprod'
+);
+lucid.selectWallet.fromSeed(process.env.WALLET_SEED);
+
+// Fetch the Hub Oracle to get policy IDs and the deposit validator address
+const hubOracle = await SDK.fetchHubOracle(lucid, {
+  hubOracleAddress: 'addr_test1...',
+});
+
+// Build the unsigned deposit transaction
+const unsignedTx = await SDK.unsignedDepositTx(lucid, {
+  depositScriptAddress: hubOracle.depositScriptAddress,
+  mintingPolicy:        hubOracle.depositMintingPolicy,
+  policyId:             hubOracle.depositPolicyId,
+  depositAmount:        5_000_000n, // 5 ADA in lovelace
+  depositInfo: {
+    l2_address: new TextEncoder().encode('addr_test1...'), // your L2 address bytes
+    l2_datum:   undefined,
+  },
+});
+
+// Sign and submit
+const signedTx = await unsignedTx.sign.withWallet().complete();
+const txHash = await signedTx.submit();
+console.log('Deposit submitted:', txHash);
+```
+
+<Tip>
+  Functions ending in `Program` (e.g., `unsignedDepositTxProgram`) return an Effect blueprint for use inside `Effect.gen` pipelines. Functions without the suffix return a plain `Promise`. Use whichever fits your codebase.
+</Tip>
+
+### Constructing a Withdrawal
+
+A withdrawal burns your L2 UTxO and registers a withdrawal claim on L1 that you redeem after the optimistic challenge window (approximately 24 hours on testnet).
+
+```typescript
+import * as SDK from '@al-ft/midgard-sdk';
+
+// Fetch current withdrawal UTxOs to confirm none are already pending for your address
+const existingWithdrawals = await SDK.fetchWithdrawalUTxOs(lucid, {
+  withdrawalScriptAddress: hubOracle.withdrawalScriptAddress,
+  eventPolicyId: hubOracle.withdrawalPolicyId,
+});
+
+// Build the unsigned withdrawal transaction
+const unsignedTx = await SDK.unsignedWithdrawalTx(lucid, {
+  withdrawalScriptAddress: hubOracle.withdrawalScriptAddress,
+  mintingPolicy:           hubOracle.withdrawalMintingPolicy,
+  policyId:                hubOracle.withdrawalPolicyId,
+  withdrawalInfo: {
+    l2_outref: myL2Utxo.outRef,
+    l1_address: new TextEncoder().encode('addr_test1...'), // L1 destination address bytes
+    l1_datum:   undefined,
+  },
+});
+
+const signedTx = await unsignedTx.sign.withWallet().complete();
+const txHash = await signedTx.submit();
+console.log('Withdrawal order submitted:', txHash);
+```
+
+### Posting a Transaction Order (Guaranteed Inclusion)
+
+A transaction order posts your L2 transaction directly to L1. The sequencer is obligated to include it in the next block — bypassing the mempool and the node's minimum-fee ordering.
+
+```typescript
+import * as SDK from '@al-ft/midgard-sdk';
+
+// Your pre-built and signed L2 transaction in CBOR hex
+const l2TxCbor = '84a400818258...';
+
+const unsignedTx = await SDK.unsignedTxOrderTx(lucid, {
+  txOrderScriptAddress: hubOracle.txOrderScriptAddress,
+  mintingPolicy:        hubOracle.txOrderMintingPolicy,
+  policyId:             hubOracle.txOrderPolicyId,
+  l2Transaction:        l2TxCbor,
+});
+
+const signedTx = await unsignedTx.sign.withWallet().complete();
+const txHash = await signedTx.submit();
+console.log('Tx order posted:', txHash);
+```
+
+### Querying the Scheduler
+
+Check which operator is currently scheduled to produce blocks before submitting operator tooling transactions.
+
+```typescript
+import * as SDK from '@al-ft/midgard-sdk';
+
+const schedulerState = await SDK.fetchSchedulerState(lucid, {
+  schedulerAddress: hubOracle.schedulerAddress,
+  schedulerPolicyId: hubOracle.schedulerPolicyId,
+});
+
+console.log('Current operator:', schedulerState.activeOperator);
+console.log('Block window ends:', new Date(Number(schedulerState.windowEnd)));
+```
+
+### Submitting a Fraud Proof
+
+Fraud proofs challenge invalid blocks committed to the state queue. The SDK exposes the first step of each multi-step fraud proof program.
+
+```typescript
+import * as SDK from '@al-ft/midgard-sdk';
+
+// Step 0 of a double-spend fraud proof
+const unsignedTx = await SDK.unsignedDoubleSpendFraudProofStep0Tx(lucid, {
+  fraudProofCatalogueAddress:  hubOracle.fraudProofCatalogueAddress,
+  fraudProofCataloguePolicyId: hubOracle.fraudProofCataloguePolicyId,
+  stateQueueAddress:           hubOracle.stateQueueAddress,
+  disputedBlockUtxo:           invalidBlockUtxo,
+  fraudProofMintingPolicy:     hubOracle.fraudProofMintingPolicy,
+});
+
+const signedTx = await unsignedTx.sign.withWallet().complete();
+await signedTx.submit();
+```
+
+## Error Handling with Effect
+
+The SDK's internal `Program` functions use Effect's typed error channel. Wrap them with `Effect.runPromise` or handle errors with `Effect.catchTag` to distinguish between `LucidError`, `HashingError`, `DepositError`, and others.
+
+```typescript
+import * as SDK from '@al-ft/midgard-sdk';
+import { Effect } from 'effect';
+
+const program = SDK.unsignedDepositTxProgram(lucid, depositParams).pipe(
+  Effect.catchTag('DepositError', (e) => {
+    console.error('Deposit build failed:', e.message, '—', e.cause);
+    return Effect.fail(e);
+  }),
+  Effect.catchTag('LucidError', (e) => {
+    console.error('Lucid error:', e.message);
+    return Effect.fail(e);
+  }),
+);
+
+const unsignedTx = await Effect.runPromise(program);
+```
+
+<Tip>
+  Use Effect's error handling for robust SDK integrations. Each tagged error type carries a `message` and a `cause` field that pinpoints exactly where the failure occurred.
+</Tip>
+
+## SDK-to-Validator Reference
+
+Each SDK module targets a specific pair of Plutus V3 validators in the Sundial smart contract system.
+
+| SDK module | Validator(s) | Aiken source |
+|---|---|---|
+| `user-events/deposit` | `deposit_mint` / `deposit_spend` | `validators/user-events/deposit.ak` |
+| `user-events/withdrawal` | `withdrawal_mint` / `withdrawal_spend` | `validators/user-events/withdrawal.ak` |
+| `user-events/tx-order` | `tx_order_mint` / `tx_order_spend` | `validators/user-events/tx-order.ak` |
+| `hub-oracle` | `hub_oracle_mint` / `hub_oracle_spend` | `lib/midgard/hub-oracle.ak` |
+| `scheduler` | `scheduler_mint` / `scheduler_spend` | `validators/scheduler.ak` |
+| `state-queue` | `state_queue_mint` / `state_queue_spend` | `validators/state-queue.ak` |
+| `fraud-proof` | `fraud_proof_mint` / `fraud_proof_spend` | `validators/fraud-proof.ak` + step validators |
+| `active-operators` | `active_operators_mint` / `active_operators_spend` | `validators/operator-directory/active-operators.ak` |
+
+<Warning>
+  On testnet, the Sundial node runs against **always-succeeds placeholder validators** — every validator unconditionally returns `True`. This means on-chain script validation enforces nothing about protocol rules during testnet. All correctness guarantees come from the node's and SDK's off-chain checks. Never send real value to testnet contract addresses.
+</Warning>
+
+<Note>
+  Full Plutus V3 enforcement — fee correctness, UTxO validity, double-spend prevention, and fraud-proof soundness — applies on mainnet. Behavior observed against the testnet demo is not a reliable indicator of what the production validators accept.
+</Note>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Midgard Types" icon="brackets-curly" href="/sdk/midgard-ts">
+    TypeScript type definitions and binary codec for L2 blocks, transactions, and user events. Use `midgard-ts` to validate transactions before submission.
+  </Card>
+  <Card title="REST API Overview" icon="plug" href="/api/overview">
+    The Sundial node also exposes an HTTP RPC API. Use the REST API as an alternative to the SDK if you prefer HTTP-based integration.
+  </Card>
+</CardGroup>

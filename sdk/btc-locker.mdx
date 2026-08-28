@@ -1,0 +1,340 @@
+---
+title: "BTC Locker SDK: Build Bitcoin Staking Transactions"
+sidebarTitle: "BTC Locker SDK"
+description: "TypeScript library for P2WSH Bitcoin staking on Sundial. Build deposit, claim, distribution, and withdrawal PSBTs programmatically in browser or Node.js."
+---
+
+`@sundial-protocol/btc-locker` lets you build Bitcoin staking PSBTs programmatically — the same library powering the Sundial dashboard. With it you can construct every transaction in the four-step BTC staking lifecycle: Deposit, Claim, Distribute, and Withdraw. The library works in both browser and Node.js environments, uses `@bitcoinerlab/secp256k1` for ECC operations, and requires asynchronous initialization via the `createBTCLocker()` factory. Version **2.0.5** supports Bitcoin mainnet and testnet3.
+
+<Note>
+  This package is hosted in a private GitHub Package Registry. You need an authorized GitHub token in your environment before installing. See the [installation steps](#installation) below.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Set up authentication">
+    Add your GitHub token to your environment and configure `.npmrc`:
+
+    ```bash
+    export NODE_AUTH_TOKEN=ghp_yourgithubtokenhere
+    ```
+
+    Create or update `.npmrc` in your project root:
+
+    ```ini
+    @sundial-protocol:registry=https://npm.pkg.github.com
+    //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+    ```
+  </Step>
+  <Step title="Install the package">
+    <CodeGroup>
+      ```bash npm
+      npm install @sundial-protocol/btc-locker
+      ```
+      ```bash pnpm
+      pnpm add @sundial-protocol/btc-locker
+      ```
+    </CodeGroup>
+  </Step>
+  <Step title="Initialize the client">
+    Always initialize through the `createBTCLocker()` factory — never call `new BTCLocker()` directly, as the async ECC initialization step must complete before any method is available:
+
+    ```typescript
+    import { createBTCLocker } from '@sundial-protocol/btc-locker';
+
+    const locker = await createBTCLocker('testnet'); // 'testnet' | 'bitcoin' | 'regtest'
+    ```
+
+    To use a specific API provider:
+
+    ```typescript
+    import { createBTCLocker, BitcoinAPI } from '@sundial-protocol/btc-locker';
+
+    const api = new BitcoinAPI('testnet', 'blockstream'); // 'mempool' | 'blockstream' | 'blockcypher'
+    const locker = await createBTCLocker('testnet', api);
+    ```
+  </Step>
+</Steps>
+
+## Full Staking Walkthrough
+
+The Sundial BTC staking flow uses four transactions: Deposit, Claim (provider), Distribute (provider), and Withdraw (user). The steps below walk you through the complete user-side flow.
+
+### Step 1 — Generate a Key Pair
+
+Generate a fresh secp256k1 key pair for this staking position. Store the private key securely — you need it to sign the withdrawal transaction after the lockup expires.
+
+```typescript
+import { createBTCLocker, TimeUtils } from '@sundial-protocol/btc-locker';
+
+const locker = await createBTCLocker('testnet');
+
+const { privateKey, publicKey, address } = await locker.generateKeyPair();
+console.log('Funding address:', address);
+// Send testnet BTC to this address before proceeding
+```
+
+### Step 2 — Create Scripts
+
+Create both scripts that govern the staking position. The timelock script holds 75 % of the staked amount and releases it back to you after the deadline. The escrow script holds the remaining 25 % and enforces the provider's claim window.
+
+```typescript
+// Lock for 30 days from now
+const deadline = TimeUtils.addDuration(TimeUtils.DURATIONS.DAY * 30);
+
+const timelockScript = await locker.createTimelockScript(
+  deadline,
+  publicKey,
+);
+
+const escrowScript = await locker.createEscrowScript(
+  deadline,
+  publicKey,          // "before" branch: user can spend before deadline only with provider co-sig
+  providerXonlyPubkey // "after" branch: provider can claim yield after deadline
+);
+
+console.log('Timelock address:', timelockScript.address);
+console.log('Escrow address:',   escrowScript.address);
+```
+
+### Step 3 — Create and Broadcast the Deposit Transaction
+
+Fetch your UTxOs, calculate the split, and broadcast the deposit PSBT.
+
+```typescript
+import { FeePriorities } from '@sundial-protocol/btc-locker';
+
+// Fetch UTxOs from your funding address
+const utxos = await locker.api.getAddressUtxos(address);
+
+// Calculate the 75/25 split
+const totalSatoshis = 1_000_000; // 0.01 BTC
+const depositAmounts = await locker.calculateDepositAmounts({
+  totalAmount: totalSatoshis,
+});
+// depositAmounts.timelockAmount ≈ 750 000 sats
+// depositAmounts.escrowAmount   ≈ 250 000 sats
+
+// Get live fee rate
+const feeRate = await locker.api.getFeeEstimates(FeePriorities.MEDIUM);
+
+// Build the deposit PSBT (returns base64 PSBT string)
+const unsignedPsbt = await locker.createDepositTransaction({
+  utxos,
+  timelockScript,
+  escrowScript,
+  timelockAmount: depositAmounts.timelockAmount,
+  escrowAmount:   depositAmounts.escrowAmount,
+  feeRate,
+  changeAddress:  address,
+  metadata: {
+    subjectId:         'your-uuid-v4-here',
+    providerXonlyPubkey,
+  },
+});
+
+// Sign and broadcast
+const signedHex = await locker.signTransaction(unsignedPsbt, privateKey);
+const txId = await locker.submitTransaction(signedHex);
+console.log('Deposit tx:', txId);
+```
+
+<Note>
+  `createBTCLocker()` automatically initializes `@bitcoinerlab/secp256k1` for browser compatibility. Never call `bitcoin.initEccLib()` manually — the factory handles it.
+</Note>
+
+### Step 4 — Withdraw After Lockup Expires
+
+After the deadline passes, your timelock UTxO becomes spendable. Build and broadcast the withdrawal transaction to reclaim your funds.
+
+```typescript
+// Fetch the UTxOs sitting at your script addresses
+const timelockUtxos = await locker.api.getAddressUtxos(timelockScript.address);
+const escrowUtxos   = await locker.api.getAddressUtxos(escrowScript.address);
+
+const feeRate = await locker.api.getFeeEstimates(FeePriorities.MEDIUM);
+
+const unsignedPsbt = await locker.createWithdrawalTransaction({
+  timelockUtxos,
+  escrowUtxos,
+  timelockScript,
+  escrowScript,
+  userPubkey:         publicKey,
+  destinationAddress: yourBitcoinAddress,
+  feeRate,
+});
+
+// Pass spendAfterDeadline: true so the escrow finalizer selects the correct branch
+const signedHex = await locker.signTransaction(unsignedPsbt, privateKey, {
+  spendAfterDeadline: true,
+});
+const txId = await locker.submitTransaction(signedHex);
+console.log('Withdrawal tx:', txId);
+```
+
+<Warning>
+  Withdraw promptly after the deadline expires. If you wait too long, the provider may claim the escrow output using the "after-deadline" branch of the escrow script, and you may only recover the timelock portion.
+</Warning>
+
+## Working with the Deposit-with-Script Helper
+
+If you already have scripts prepared, use `createDepositTransactionWithScript` to skip the script construction step:
+
+```typescript
+const unsignedPsbt = await locker.createDepositTransactionWithScript({
+  utxos,
+  timelockScript,         // pre-created ScriptInfo
+  escrowScript,           // pre-created ScriptInfo
+  timelockAmount: 750_000,
+  escrowAmount:   250_000,
+  feeRate,
+  changeAddress:  address,
+});
+```
+
+## API Reference
+
+<Accordion title="Factory and Initialization">
+
+  **`createBTCLocker(network?, api?): Promise<BTCLocker>`**
+
+  The recommended entry point. Initializes the ECC library and returns a fully ready `BTCLocker` instance.
+
+  | Parameter | Type | Default | Description |
+  |---|---|---|---|
+  | `network` | `'bitcoin' \| 'testnet' \| 'regtest'` | `'testnet'` | Bitcoin network target |
+  | `api` | `BitcoinAPI` | Auto-created | Optional pre-configured API instance |
+
+</Accordion>
+
+<Accordion title="Key Management">
+
+  **`locker.generateKeyPair(): Promise<KeyPair>`**
+
+  Generates a new random secp256k1 key pair and derives the P2WPKH address for the configured network.
+
+  Returns `{ privateKey: string, publicKey: Buffer, address: string }`.
+
+</Accordion>
+
+<Accordion title="Script Construction">
+
+  **`locker.createTimelockScript(locktime, publicKey): Promise<ScriptInfo>`**
+
+  Builds a P2WSH script that requires `<sig>` and a past-deadline `CHECKLOCKTIMEVERIFY`. The user can spend after `locktime` with their signature alone.
+
+  **`locker.createRelativeTimelockScript(sequence, publicKey): Promise<ScriptInfo>`**
+
+  Same as above but uses `CHECKSEQUENCEVERIFY` for relative timelocks (e.g., 144 blocks ≈ 1 day).
+
+  **`locker.createEscrowScript(deadline, userPubkey, providerXonlyPubkey): Promise<ScriptInfo>`**
+
+  Builds a P2WSH escrow with two spending branches:
+  - **Before deadline:** requires both user and provider signatures.
+  - **After deadline:** provider can spend unilaterally to claim yield.
+
+</Accordion>
+
+<Accordion title="Transaction Construction">
+
+  **`locker.createDepositTransaction(params): Promise<string>`**
+
+  Builds a PSBT that funds both the timelock and escrow P2WSH addresses in a single transaction. Returns base64 PSBT string.
+
+  **`locker.createDepositTransactionWithScript(params): Promise<string>`**
+
+  Same as above but accepts pre-created `ScriptInfo` objects directly.
+
+  **`locker.calculateDepositAmounts(params): Promise<DepositCalculationResult>`**
+
+  Calculates the 75/25 timelock/escrow split for a given total amount.
+
+  **`locker.createClaimTransaction(params): Promise<string>`**
+
+  (Provider use.) Builds a PSBT that spends the escrow output after the deadline, claiming the yield portion.
+
+  **`locker.createDistributionTransaction(params): Promise<string>`**
+
+  (Provider use.) Builds a PSBT that distributes yield proceeds back to stakers.
+
+  **`locker.createWithdrawalTransaction(params): Promise<string>`**
+
+  Builds a PSBT that reclaims both the timelock and escrow outputs after the deadline expires.
+
+</Accordion>
+
+<Accordion title="Signing and Broadcasting">
+
+  **`locker.signTransaction(unsignedPsbt, privateKeys, options?): Promise<string>`**
+
+  Signs a PSBT with one or more private keys and finalizes the witness stack. Returns signed transaction hex.
+
+  | Parameter | Type | Description |
+  |---|---|---|
+  | `unsignedPsbt` | `string` | Base64 PSBT |
+  | `privateKeys` | `string \| string[]` | One key per input, or a single key for all |
+  | `options.spendAfterDeadline` | `boolean` | Set `true` when spending the escrow's after-deadline branch |
+
+  **`locker.submitTransaction(txHex): Promise<string>`**
+
+  Broadcasts a signed transaction hex to the Bitcoin network via the configured API provider. Returns the transaction ID.
+
+</Accordion>
+
+<Accordion title="API Utilities">
+
+  **`locker.api.getAddressUtxos(address): Promise<ApiUTXO[]>`**
+
+  Fetches all UTxOs for a Bitcoin address. If the primary provider (mempool.space) is unavailable, automatically falls back to Blockstream.
+
+  **`locker.api.getFeeEstimates(priority?): Promise<number>`**
+
+  Returns a live fee rate in sat/vB from the configured provider. Priority is one of `FeePriorities.HIGH`, `FeePriorities.MEDIUM`, or `FeePriorities.LOW` (default: `MEDIUM`).
+
+  **`locker.api.broadcastTransaction(txHex): Promise<BroadcastResult>`**
+
+  Broadcasts raw transaction hex and returns `{ txid }`.
+
+</Accordion>
+
+## Quick-Reference Table
+
+| Method | Description |
+|---|---|
+| `createBTCLocker(network?, api?)` | Initialize the client (always use this, not `new BTCLocker()`) |
+| `generateKeyPair()` | Generate secp256k1 key pair |
+| `createTimelockScript(locktime, pubkey)` | Build P2WSH absolute timelock script |
+| `createRelativeTimelockScript(sequence, pubkey)` | Build P2WSH relative timelock script |
+| `createEscrowScript(deadline, userPubkey, providerPubkey)` | Build P2WSH two-branch escrow script |
+| `createDepositTransaction(params)` | Build deposit PSBT (timelock + escrow outputs) |
+| `createDepositTransactionWithScript(params)` | Build deposit PSBT from pre-created scripts |
+| `calculateDepositAmounts(params)` | Calculate timelock/escrow 75/25 split |
+| `createClaimTransaction(params)` | Build claim PSBT (provider use) |
+| `createDistributionTransaction(params)` | Build yield distribution PSBT (provider use) |
+| `createWithdrawalTransaction(params)` | Build withdrawal PSBT |
+| `signTransaction(psbt, keys, options?)` | Sign a PSBT and finalize witness stack |
+| `submitTransaction(txHex)` | Broadcast to Bitcoin network |
+| `api.getAddressUtxos(address)` | Fetch UTxOs for a Bitcoin address |
+| `api.getFeeEstimates(priority?)` | Get live Bitcoin fee rate (sat/vB) |
+
+## Error Types
+
+The library throws typed errors for common failure modes:
+
+| Error class | When it is thrown |
+|---|---|
+| `BTCLockerError` | General operation failures |
+| `ValidationError` | Invalid parameters (bad keys, amounts, addresses) |
+| `TimelockError` | Timelock-specific failures (past deadline, invalid locktime) |
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="BTC Staking" icon="bitcoin" href="/components/btc-staking">
+    Protocol-level overview of the four-transaction BTC staking lifecycle, P2WSH script design, and the 75/25 split rationale.
+  </Card>
+  <Card title="Midgard SDK" icon="code" href="/sdk/midgard-sdk">
+    The Cardano-side SDK for building L2 deposits, withdrawals, and transaction orders on the Sundial Midgard rollup.
+  </Card>
+</CardGroup>

@@ -1,0 +1,316 @@
+---
+title: "Sundial CLI Reference: midgard Command Guide"
+sidebarTitle: "CLI Reference"
+description: "Full reference for the midgard CLI: wallet management, transaction submission, node status checks, and key generation for Sundial L2 operators and users."
+---
+
+The `midgard` CLI is the command-line interface for interacting with the Sundial L2. You use it to create and manage wallets, send transactions on the L2, look up transaction history, and check the status of a running node — all without writing any code. It communicates directly with the Sundial node's HTTP RPC endpoints, so anything the node exposes is accessible from the terminal.
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install -g @sundial-protocol/midgard-cli
+    ```
+  </Tab>
+  <Tab title="Build from source">
+    ```bash
+    git clone https://github.com/sundial-protocol/sundial-monorepo
+    cd sundial-monorepo/demo/midgard-manager/packages/cli
+    pnpm install
+    pnpm build
+    # Run directly without installing globally
+    node dist/bin.js <command>
+    ```
+  </Tab>
+</Tabs>
+
+After installation, confirm it is working:
+
+```bash
+midgard --help
+```
+
+## Global Options
+
+These flags apply to every `midgard` command and can be set as environment variables to avoid typing them on every invocation.
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `--endpoint <url>` | — | `http://localhost:3000` | Sundial node URL to connect to |
+| `--network <network>` | `SUNDIAL_NODE_NETWORK_ID` | `1` (Preprod) | `mainnet` or testnet magic number |
+
+To point every command at the public testnet node, export the endpoint once in your shell:
+
+```bash
+export SUNDIAL_NODE_ENDPOINT=https://rpc.testnet.sundialprotocol.com
+```
+
+## Wallet Commands
+
+The CLI stores wallet keys locally in `config/wallets/default.json`. This file is git-ignored and never leaves your machine — treat it with the same care as any private key file.
+
+### `midgard wallet create`
+
+Generate a new wallet with a fresh keypair.
+
+```bash
+midgard wallet create alice
+```
+
+**Example output:**
+
+```
+✓ Created wallet: alice
+Address: addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8
+Private Key: ed25519_sk...vtpwa
+
+Fund it from the faucet, then check its balance with:
+$ midgard wallet balance alice
+```
+
+<Warning>
+  Save your private key immediately after creating a wallet. The CLI prints it once — if you lose it, the wallet cannot be recovered.
+</Warning>
+
+### `midgard wallet import`
+
+Register an existing private key under a local name.
+
+```bash
+midgard wallet import alice --private-key ed25519_sk...vtpwa
+```
+
+Use this to bring in a key you already hold rather than generating a new one.
+
+### `midgard wallet list`
+
+Display all locally saved wallets and their addresses.
+
+```bash
+midgard wallet list
+```
+
+**Example output:**
+
+```
+Available wallets:
+ • alice — addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8
+ • bob   — addr_test1vpmkj5p7v93m2j5m5laqj27w2u6veqcgnfrt3zt50cvkunqs0rnyz
+```
+
+### `midgard wallet balance`
+
+Check the sBTC balance of a saved wallet.
+
+```bash
+midgard wallet balance alice
+```
+
+**Example output:**
+
+```
+Balance for alice (addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8):
+  100.000000 sBTC
+  (100000000 lovelace across 1 UTxO(s))
+```
+
+Balances are displayed in sBTC. The underlying unit is lovelace, where 1 sBTC = 1,000,000 lovelace.
+
+### `midgard wallet address`
+
+Print the address for a saved wallet without showing the balance.
+
+```bash
+midgard wallet address alice
+```
+
+## Transaction Commands
+
+### `midgard send`
+
+Transfer sBTC from one of your saved wallets to any address on the Sundial L2.
+
+```bash
+midgard send \
+  --from alice \
+  --to addr_test1vpmkj5p7v93m2j5m5laqj27w2u6veqcgnfrt3zt50cvkunqs0rnyz \
+  --amount 1.5
+```
+
+**Example output:**
+
+```
+Sending 1.5 sBTC from alice to addr_test1vpmkj5p7v93m2j5m5laqj27w2u6veqcgnfrt3zt50cvkunqs0rnyz...
+✓ Sent 1.5 sBTC
+Transaction hash: 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
+Check it with: midgard tx-lookup 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
+```
+
+<Note>
+  `--amount` is in sBTC, not lovelace. To send 5 sBTC, pass `--amount 5`, not `--amount 5000000`.
+</Note>
+
+The `send` command signs the transaction with the locally stored private key and submits it through `POST /submit`. The node queues it for processing; there may be a brief delay before the transaction appears in lookups.
+
+### `midgard tx-lookup`
+
+Look up a transaction by its 64-character hex hash.
+
+```bash
+midgard tx-lookup 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
+```
+
+<Note>
+  Transactions submitted via `send` are queued before being processed. If you see "Not found" immediately after sending, wait a few seconds and try again — a background worker on the node deserializes and validates the transaction shortly after receipt.
+</Note>
+
+### `midgard query utxos`
+
+List the UTxOs held at a given address.
+
+```bash
+midgard query utxos --address addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8
+```
+
+**Example output:**
+
+```
+                           TxHash                                 TxIx        Amount
+--------------------------------------------------------------------------------------
+262c7891f932cde390bcc04c25805f3f422c1a5687d5d47f6681e68bb384fe6d     0        100000000 lovelace + TxOutDatumNone
+```
+
+## Node Commands
+
+### `midgard node node-status`
+
+Check whether the node you are connected to is live and ready.
+
+```bash
+midgard node node-status
+```
+
+**Example output (healthy node):**
+
+```
+✔ Node is online
+
+📊 Sundial Node Status
+
+• Live: yes
+• Ready: yes
+• Endpoint: http://localhost:3000
+```
+
+**Example output (node starting up):**
+
+```
+✔ Node is online but not ready
+
+📊 Sundial Node Status
+
+• Live: yes
+• Ready: no (not_ready)
+• Failing subsystems: l1Provider
+• Endpoint: http://localhost:3000
+```
+
+A node can be **live** (the process is running) but not yet **ready** (database, Redis, or L1 provider are still initializing). If the node stays in `not_ready` for more than a minute, check your L1 provider credentials in `.env`.
+
+<Tip>
+  Run `midgard node node-status` first whenever `wallet balance` or `send` can't connect — it tells you immediately whether the issue is the node or the command itself.
+</Tip>
+
+## Key Generation (Operators)
+
+These commands are for operators who need to manage raw Cardano key pairs and addresses — for example, when setting up the seed phrases required by the node's environment file.
+
+### Generate a payment key pair
+
+```bash
+midgard address key-gen \
+  --verification-key-file payment.vkey \
+  --signing-key-file payment.skey
+```
+
+This produces two files: `payment.vkey` (the public verification key) and `payment.skey` (the private signing key). Store `payment.skey` securely.
+
+### Build an enterprise address from a payment key
+
+```bash
+midgard address build \
+  --payment-verification-key-file payment.vkey \
+  --out-file payment.addr
+
+cat payment.addr
+# addr_test1vzdtyyt48yrn2fa3wvh939rat0gyv6ly0ljt449sw8tppzq84xstz
+```
+
+An enterprise address has a payment credential but no staking credential. It cannot delegate or earn staking rewards.
+
+### Generate a stake key pair
+
+```bash
+midgard stake-address key-gen \
+  --verification-key-file stake.vkey \
+  --signing-key-file stake.skey
+```
+
+### Build a base address with payment and staking credentials
+
+```bash
+midgard address build \
+  --payment-verification-key-file payment.vkey \
+  --stake-verification-key-file stake.vkey \
+  --out-file full.addr
+
+cat full.addr
+# addr_test1qzdtyyt48yrn2fa3wvh939rat0gyv6ly0ljt449sw8tppzrcc3g0zu63cp6rnjumfcadft63x3w8ds4u28z6zlvra4fqy2sm8n
+```
+
+A base address carries both a payment credential and a stake credential. Use this address type when you want a wallet that can participate in staking.
+
+## Address Formats
+
+Sundial L2 uses the same address format as the Cardano L1 testnet, following [CIP-19](https://cips.cardano.org/cips/cip19/).
+
+| Format | Prefix | Description |
+|--------|--------|-------------|
+| Enterprise | `addr_test1v…` | Payment credential only — no staking rights |
+| Base | `addr_test1q…` | Payment + staking credentials — eligible for delegation |
+| Mainnet enterprise | `addr1v…` | Mainnet equivalent of enterprise |
+| Mainnet base | `addr1q…` | Mainnet equivalent of base |
+
+<Warning>
+  Always use a `addr_test1…` address when working with the testnet. A mainnet `addr1…` address will be rejected by the faucet and by the testnet node.
+</Warning>
+
+## Node Socket and Network Configuration
+
+For operators who need to configure the node-to-client socket path and network ID directly:
+
+```bash
+# Set the socket path the CLI uses to communicate with a local node
+export SUNDIAL_NODE_SOCKET_PATH=~/node.socket
+
+# Set the network for testnet
+export SUNDIAL_NODE_NETWORK_ID=1
+
+# Set the network for mainnet
+export SUNDIAL_NODE_NETWORK_ID=mainnet
+```
+
+Alternatively, supply `--testnet-magic 1` with each command instead of exporting the environment variable.
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Layer Node Deployment" icon="server" href="/operators/layer-node">
+    Run a Sundial node with Docker Compose or Nix, including the full observability stack.
+  </Card>
+  <Card title="Node Configuration" icon="sliders" href="/operators/configuration">
+    Full reference for every environment variable the node reads at startup.
+  </Card>
+</CardGroup>

@@ -1,0 +1,120 @@
+---
+title: "Sundial Node API Overview and Authentication"
+sidebarTitle: "Overview"
+description: "The Sundial node API is an HTTP RPC API for submitting transactions, querying UTxOs, and monitoring the L2. Base URL: https://rpc.testnet.sundialprotocol.com"
+---
+
+The Sundial node exposes an unversioned, RPC-style HTTP API that lets you submit transactions to the L2 mempool, query UTxO and transaction history, inspect block data, and monitor node health — all without any API key or authentication for public endpoints. The testnet node is available at `https://rpc.testnet.sundialprotocol.com` and serves the full router, meaning every endpoint in this reference is reachable.
+
+## Base URL
+
+```
+https://rpc.testnet.sundialprotocol.com
+```
+
+All paths in this reference are relative to this base URL. There is no `/v1` or versioning prefix — endpoints are served at the root.
+
+## API Style
+
+The Sundial node API is RPC-style HTTP, not REST. Endpoints are named after operations rather than resources, and their HTTP methods (`GET` vs `POST`) reflect implementation details rather than strict REST semantics. Two notable examples:
+
+- `GET /commit` and `GET /merge` are side-effecting even though they use `GET`.
+- `POST /submit` accepts a raw hex string as its body, not a JSON object.
+
+## Authentication
+
+Public read and submission endpoints require no authentication. The only endpoint that checks credentials is `POST /faucet/claims`, which uses a static bearer token handled server-side — callers on testnet do not need to supply a token themselves.
+
+<Note>
+  No endpoint other than `POST /faucet/claims` performs authentication or rate-limiting at the application layer. On testnet there are no rate limits enforced. Do not expose the node directly to the public internet without an external proxy in production environments.
+</Note>
+
+## Request Format
+
+Most endpoints accept a JSON body with `Content-Type: application/json`. The exception is `POST /submit`, which takes the raw hex-encoded CBOR transaction as a plain text body:
+
+```http
+POST /submit
+Content-Type: text/plain
+
+<hex-encoded-transaction-cbor>
+```
+
+Query parameters are used for all `GET` endpoints.
+
+## Response Format
+
+All endpoints return JSON responses. The `POST /submit` success response carries a Redis stream entry ID, not a transaction hash — compute the hash client-side from the CBOR if you need it.
+
+## Error Handling
+
+Most unexpected failures return a generic `500` response:
+
+```json
+{ "error": "Something went wrong" }
+```
+
+Validation errors return `400` with a descriptive message, and not-found conditions return `404`. The faucet endpoint returns structured error objects with a stable `code` field rather than generic messages — see the [Faucet API](/api/faucet) page for the full error code table.
+
+## Endpoint Summary
+
+The table below lists the endpoints available on the full (monolith) node. A subset of these — health checks, `POST /submit`, and `POST /faucet/claims` — is also available on `api`-role nodes used in horizontally scaled deployments.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health/live` | Liveness probe — always returns `200` if the process is up |
+| `GET` | `/health/ready` | Readiness probe — checks database, Redis, and L1 provider |
+| `GET` | `/tx` | Look up a single transaction by hash |
+| `GET` | `/txs` | Query paginated address transaction history |
+| `GET` | `/utxos` | Query the current UTxO set for an address |
+| `GET` | `/block` | Query transaction hashes for a block |
+| `POST` | `/submit` | Submit a raw CBOR transaction to the L2 queue |
+| `POST` | `/faucet/claims` | Claim testnet sBTC for a preprod address |
+| `GET` | `/stateQueue` | Fetch the state-queue linked list from Cardano L1 |
+| `GET` | `/stateQueue/root-unit-diagnostics` | Report health of the state-queue root unit |
+| `GET` | `/commitment-wallet/balance` | Return the operator commitment wallet balance |
+
+## Quick Start
+
+Run a liveness check to confirm the node is reachable:
+
+```bash
+curl https://rpc.testnet.sundialprotocol.com/health/live
+```
+
+A healthy node responds immediately with:
+
+```json
+{ "status": "ok" }
+```
+
+For a deeper readiness check — which validates the database, Redis, and the L1 provider connection — use the ready endpoint:
+
+```bash
+curl https://rpc.testnet.sundialprotocol.com/health/ready
+```
+
+A fully ready node returns:
+
+```json
+{ "status": "ready" }
+```
+
+If any dependency is unavailable, the response is `503` with a `failing` array identifying the affected subsystems.
+
+## Explore the API
+
+<CardGroup cols={2}>
+  <Card title="Transactions" icon="arrow-right-arrow-left" href="/api/transactions">
+    Submit transactions to the L2 mempool, look up individual transactions, and query address history.
+  </Card>
+  <Card title="UTxOs" icon="coins" href="/api/utxos">
+    Fetch spendable unspent outputs for any address on the Sundial L2 ledger.
+  </Card>
+  <Card title="Blocks" icon="cube" href="/api/blocks">
+    Query block data by header hash and inspect the state queue committed to Cardano L1.
+  </Card>
+  <Card title="Faucet API" icon="faucet" href="/api/faucet">
+    Claim testnet sBTC programmatically for automated testing and CI pipelines.
+  </Card>
+</CardGroup>

@@ -1,0 +1,294 @@
+---
+title: "Sundial Testnet: Test Tokens, Faucet & Network Details"
+sidebarTitle: "Testnet Guide"
+description: "Everything you need to use the Sundial testnet: supported wallets, claiming sBTC from the faucet, network configuration, and the CLI wallet tool."
+---
+
+The Sundial testnet is a safe environment for exploring Bitcoin-native yield without risking real funds. It issues **testnet sBTC** — Sundial's synthetic BTC token on the Midgard L2 — through a free faucet, and runs the full dashboard experience against Bitcoin's testnet3 network. Nothing you do here touches real BTC, ADA, or money.
+
+<Warning>
+  Testnet tokens have **no monetary value**. Do not buy, sell, or trade them as if they did. Keep all testnet wallets and seed phrases completely separate from any wallet that holds real assets. Never enter a real seed phrase into a testnet flow.
+</Warning>
+
+## Supported wallets
+
+You need a UTXO-compatible Cardano wallet browser extension set to the testnet network. All of the wallets below implement the CIP-30 standard that the Sundial faucet page and L2 rely on.
+
+| Wallet | Notes |
+| --- | --- |
+| [Eternl](https://eternl.io/) | Recommended — easy network switching, widely used |
+| [Lace](https://www.lace.io/) | Recommended — official IOG wallet, simple UI |
+| [Typhon](https://typhonwallet.io/) | Full-featured Cardano wallet |
+| [Yoroi](https://yoroi-wallet.com/) | Available as browser extension and mobile app |
+| [GeroWallet](https://gerowallet.io/) | DeFi-focused Cardano wallet |
+| [NuFi](https://nu.fi/) | Non-custodial, supports multiple chains |
+
+You only need one. Install it as a browser extension, create or restore a wallet inside it, and continue below.
+
+<Note>
+  A separate Bitcoin wallet for the testnet dashboard is **optional**. You do not need one to claim faucet sBTC. Bitcoin wallet setup is covered in the [Explore the Dashboard](#explore-the-testnet-dashboard) section below.
+</Note>
+
+## Claiming testnet sBTC from the faucet
+
+The faucet at [sundialprotocol.com/testnet/faucet](https://sundialprotocol.com/testnet/faucet) distributes free testnet sBTC to any valid testnet address. No wallet connection or signature is required — you paste your address and click a button.
+
+<Steps>
+  <Step title="Switch your wallet to testnet">
+    Open your wallet extension and locate the network selector — usually in **Settings** or displayed as a network name in the top bar. Switch from **Mainnet** to **Testnet** or **Preprod**. Every wallet listed above supports this, though the exact menu label varies.
+
+    Once switched, open the **Receive** screen and copy your payment address. A testnet address always begins with `addr_test1`. If your address starts with `addr1`, your wallet is still on Mainnet — switch networks and copy a fresh address.
+  </Step>
+
+  <Step title="Submit your address to the faucet">
+    1. Go to [sundialprotocol.com/testnet/faucet](https://sundialprotocol.com/testnet/faucet).
+    2. Paste your `addr_test1…` address into the **Sundial testnet address** field.
+    3. Click **Request testnet sBTC**.
+
+    On success you'll see a confirmation with four pieces of information:
+
+    | Field | What it tells you |
+    | --- | --- |
+    | **Grant amount** | How much testnet sBTC was sent to your address |
+    | **Next eligible at** | When this address can claim again (addresses have a cooldown between claims) |
+    | **Claim ID** | A unique reference ID for this claim |
+    | **Transaction hash** | The L2 transaction that moved the sBTC to your address |
+  </Step>
+
+  <Step title="Confirm the balance in your wallet">
+    Refresh your wallet extension (still on Testnet/Preprod) — the testnet sBTC grant should appear in your balance. Because this balance lives on Sundial's L2 rather than on the Cardano settlement L1, it will not appear on standard Cardano block explorers. Your wallet extension and the faucet confirmation screen are the authoritative sources during the testnet phase.
+  </Step>
+</Steps>
+
+## Troubleshooting faucet errors
+
+If your claim doesn't succeed, the faucet page displays a specific reason. Use the table below to diagnose and fix the issue.
+
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| "Enter a valid Sundial testnet payment address" / address must start with `addr_test1` | The field is empty or the address is not a testnet address | Switch your wallet to Testnet/Preprod, then copy a fresh receive address |
+| "This address has already claimed recently" (Cooldown) | This address claimed within its cooldown window | Wait until the **Next eligible at** time shown in the previous confirmation, or use a different testnet address |
+| "This browser has reached the current faucet claim limit" | Too many successful claims from your network or IP recently | Try again later, or switch to a different network |
+| "The faucet is temporarily out of funds" (Depleted) | The faucet wallet is low on testnet sBTC | Try again in a little while — the faucet is refilled periodically |
+| "The faucet is currently unavailable" | The faucet is disabled, misconfigured, or the node is unreachable | Try again shortly; if it persists, report it to the Sundial team |
+
+Address-related errors — invalid format, wrong network, no payment credential, or a script address — all have the same fix: paste a normal receive address copied from a wallet that is in testnet mode, not a stake address, script address, or mainnet address.
+
+## Testnet network details
+
+| Detail | Value |
+| --- | --- |
+| **Faucet page** | `https://sundialprotocol.com/testnet/faucet` |
+| **Node RPC** | `https://rpc.testnet.sundialprotocol.com` |
+| **Address format** | `addr_test1…` (UTXO-based L1 testnet bech32 format) |
+| **sBTC denomination** | 1,000,000 lovelace = 1 sBTC |
+| **Claim cooldown** | Shown on the faucet confirmation screen after each claim |
+
+You do not need to call the node RPC directly to use the faucet. The faucet web page handles the claim submission on your behalf using a server-side credential, so claims must go through the web page rather than a direct API call.
+
+## Explore the testnet dashboard
+
+Sundial's [dashboard](https://sundialprotocol.com/dashboard) gives you a preview of the full Bitcoin-yield product: connecting a wallet, depositing assets, and tracking positions. On testnet, the dashboard runs against **Bitcoin's testnet3 network** using a separate Bitcoin wallet connected through the page's **Connect Wallet** button.
+
+<Warning>
+  The dashboard is a test-only preview. Transactions and balances there are simulated for demonstration purposes. Make sure any Bitcoin wallet you connect is set to **testnet3**, and never send real BTC to a testnet address.
+</Warning>
+
+This is a separate flow from claiming faucet sBTC — you can use the faucet on its own without ever connecting a Bitcoin wallet to the dashboard.
+
+## The `midgard` CLI tool
+
+Sending testnet sBTC to another address requires talking to the Sundial L2 node directly — your wallet extension's built-in Send button only knows about the Cardano settlement L1, not Sundial's L2. The `midgard` command-line tool handles this for you without any programming required.
+
+### Install and build
+
+From a checkout of the `sundial-monorepo` repository:
+
+```bash
+cd demo/midgard-manager/packages/cli
+pnpm install
+pnpm build
+```
+
+Every command below uses `node dist/bin.js <command>`. The same binary is installable globally as `midgard` via the package's `bin` field. By default, commands connect to `http://localhost:3000` — use `--endpoint` to point at the public testnet node or any other instance.
+
+### Create a wallet
+
+```bash
+node dist/bin.js wallet create alice
+```
+
+```
+┌─ 🌞 SUNDIAL MANAGER
+│ CLI Tool for Testnet
+└────────────
+✓ Created wallet: alice
+Address: addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8
+Private Key: ed25519_sk...vtpwa
+
+Fund it from the faucet, then check its balance with:
+$ midgard wallet balance alice
+```
+
+This generates a fresh keypair and prints its `addr_test1…` address — the same format used in the browser-wallet faucet flow. The private key is stored locally in `demo/midgard-manager/config/wallets/default.json`, which is git-ignored. Treat this wallet as test-only; never use it for real assets.
+
+### Import an existing wallet
+
+```bash
+node dist/bin.js wallet import bob --private-key ed25519_sk...
+```
+
+Use `wallet import` to register a keypair you already have instead of generating a new one.
+
+### List wallets
+
+```bash
+node dist/bin.js wallet list
+```
+
+```
+Available wallets:
+ • alice — addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8
+ • bob   — addr_test1vpmkj5p7v93m2j5m5laqj27w2u6veqcgnfrt3zt50cvkunqs0rnyz
+```
+
+### Check a balance
+
+```bash
+node dist/bin.js wallet balance alice
+```
+
+Before funding, the balance is genuinely zero:
+
+```
+Balance for alice (addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8):
+  0.000000 sBTC
+  (0 lovelace across 0 UTxO(s))
+```
+
+After a faucet claim lands:
+
+```
+Balance for alice (addr_test1vqfyf53z2m7wd2nlqys7cq9wvnryv2eeqd6xpqkx0pj9r5c8skzr8):
+  100.000000 sBTC
+  (100000000 lovelace across 1 UTxO(s))
+```
+
+### Send tokens
+
+```bash
+node dist/bin.js send \
+  --from alice \
+  --to addr_test1vpmkj5p7v93m2j5m5laqj27w2u6veqcgnfrt3zt50cvkunqs0rnyz \
+  --amount 1.5
+```
+
+```
+Sending 1.5 sBTC from alice to addr_test1vpmkj5p7v93m2j5m5laqj27w2u6veqcgnfrt3zt50cvkunqs0rnyz...
+✓ Sent 1.5 sBTC to addr_test1vpmkj5p7v93m2j5m5laqj27w2u6veqcgnfrt3zt50cvkunqs0rnyz
+Transaction hash: 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
+Check it with: midgard tx-lookup 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
+```
+
+The `--amount` flag is in sBTC, not lovelace. Signing uses the locally stored private key — this is the raw-private-key path intended for the terminal, not the CIP-30 browser-wallet flow.
+
+<Note>
+  If you try to send before funding the wallet, the CLI will return a coin-selection error telling you the wallet doesn't have enough funds. Fund the address via the faucet first, then retry.
+</Note>
+
+### Look up a transaction
+
+```bash
+node dist/bin.js tx-lookup 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
+```
+
+```
+Not found: 17b6ed8627fd65838003ca00d4c4ebd78a4494e0f9baf256cfffd60c982842af
+It may still be queued for processing — try again in a few seconds.
+```
+
+A transaction is not immediately visible after `send` — `POST /submit` queues it, and a background worker on the node validates and includes it shortly after. If you see "Not found" for a hash you just sent, wait a few seconds and try again.
+
+### Check node status
+
+```bash
+node dist/bin.js node node-status --endpoint https://rpc.testnet.sundialprotocol.com
+```
+
+```
+- Checking Sundial node status at https://rpc.testnet.sundialprotocol.com...
+✔ Node is online and ready
+
+📊 Sundial Node Status
+
+• Live: yes
+• Ready: yes
+• Endpoint: https://rpc.testnet.sundialprotocol.com
+```
+
+Run `node-status` first whenever `send` or `wallet balance` can't connect. A node can be **live** (the process is running) but not **ready** (database, cache, or L1 connection is still starting up). The status output identifies which subsystem is failing so you know whether to wait or escalate.
+
+## CLI command reference
+
+<AccordionGroup>
+  <Accordion title="wallet create &lt;name&gt;" icon="key">
+    Generates a fresh Ed25519 keypair and saves it under the given name. Prints the new `addr_test1…` address and private key.
+
+    ```bash
+    node dist/bin.js wallet create <name>
+    ```
+  </Accordion>
+  <Accordion title="wallet import &lt;name&gt; --private-key &lt;key&gt;" icon="file-import">
+    Registers an existing Ed25519 private key under the given name without generating a new keypair.
+
+    ```bash
+    node dist/bin.js wallet import <name> --private-key <ed25519_sk...>
+    ```
+  </Accordion>
+  <Accordion title="wallet list" icon="list">
+    Displays all saved wallets with their names and `addr_test1…` addresses.
+
+    ```bash
+    node dist/bin.js wallet list
+    ```
+  </Accordion>
+  <Accordion title="wallet balance &lt;name&gt;" icon="scale-balanced">
+    Queries the node for the sBTC balance and UTxO count of the named wallet.
+
+    ```bash
+    node dist/bin.js wallet balance <name>
+    ```
+  </Accordion>
+  <Accordion title="send --from &lt;name&gt; --to &lt;address&gt; --amount &lt;sBTC&gt;" icon="paper-plane">
+    Signs and submits an L2 transfer using the named wallet's stored private key. Amount is in sBTC.
+
+    ```bash
+    node dist/bin.js send --from <name> --to <addr_test1...> --amount <amount>
+    ```
+  </Accordion>
+  <Accordion title="tx-lookup &lt;hash&gt;" icon="magnifying-glass">
+    Looks up a transaction by its hex hash. Returns the transaction details or a "Not found" message if it hasn't been processed yet.
+
+    ```bash
+    node dist/bin.js tx-lookup <64-char-hex>
+    ```
+  </Accordion>
+  <Accordion title="node node-status [--endpoint &lt;url&gt;]" icon="signal">
+    Checks whether the target node is live and ready. Reports any failing subsystems (database, cache, L1 provider). Defaults to `http://localhost:3000` if `--endpoint` is omitted.
+
+    ```bash
+    node dist/bin.js node node-status --endpoint <url>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Safety reminders
+
+<Warning>
+  Keep these rules in mind throughout your testnet session:
+
+  - Testnet sBTC and Bitcoin testnet3 coins have **no monetary value**. Do not buy, sell, or treat them as real assets.
+  - Use a dedicated testnet wallet. Never import or use a seed phrase that controls real funds in a testnet flow.
+  - The `midgard` CLI stores private keys in plaintext at `demo/midgard-manager/config/wallets/default.json`. This is fine for test-only wallets; treat it as you would any unencrypted credential file.
+  - If the faucet or dashboard behaves unexpectedly, that's valuable testnet feedback. Report it to the Sundial team rather than assuming you've done something wrong.
+</Warning>

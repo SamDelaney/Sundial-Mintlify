@@ -1,0 +1,129 @@
+---
+title: "Midgard L2: Optimistic Rollup Scaling on Cardano"
+sidebarTitle: "L2 Rollup"
+description: "Midgard is Cardano's first optimistic rollup. Learn how it achieves 2,000–5,000 TPS by batching transactions off-chain and anchoring block headers on Cardano L1."
+---
+
+Midgard is the Layer 2 at the heart of Sundial Protocol. It processes your transactions off-chain — fast and cheaply — and periodically publishes a compact cryptographic summary of all that activity to Cardano. Because Cardano acts as the final judge for any dispute, you get the speed of an off-chain system with the security guarantees of a proven L1. This design is called an **optimistic rollup**.
+
+## What Is an Optimistic Rollup?
+
+An optimistic rollup works on a simple principle: assume every batch of transactions is valid unless someone proves otherwise. Operators process transactions off-chain in large batches, then post a short commitment — a block header — to the L1. The network gives anyone a window of time to challenge that commitment by submitting a fraud proof. If no valid challenge arrives, the batch is finalized.
+
+The word "optimistic" reflects the default assumption of honest behavior. The system is safe because any single honest watcher can catch and penalize dishonest operators, and the economics make cheating unprofitable.
+
+<Tip>
+  For you as a user, this means you enjoy transaction fees and confirmation speeds that are orders of magnitude better than transacting directly on Cardano L1, while still benefiting from L1-grade security for your funds.
+</Tip>
+
+## How Midgard Works
+
+Operators run Midgard nodes that maintain a local copy of the L2 ledger. When you submit a transaction, it enters the operator's mempool. The operator gathers transactions, applies them to the ledger, and seals a new block. The block header — containing Merkle root hashes of the ledger state — is then posted to the Cardano **state queue** contract.
+
+### Block Headers and Merkle Patricia Tries
+
+Every Midgard block header contains Merkle Patricia Trie (MPT) root hashes. Think of an MPT as a highly efficient fingerprint of an entire dataset: it compresses the complete ledger state, transaction set, deposits, and withdrawals into a handful of short hashes. Anyone who has access to the underlying data can verify in seconds that a specific transaction is included — or that a block's claimed state is inconsistent with its transactions.
+
+This structure is what makes fraud proofs practical. A watcher does not need to replay every transaction on-chain; they only need to pinpoint the exact step where the operator's state transition diverges from the correct one. Cardano's deterministic UTxO execution model makes this pinpointing cheaper and more reliable than on account-based chains.
+
+### The Maturity Period and Fraud Proofs
+
+After a block header lands in the state queue, it enters a **challenge window** (also called the maturity period). During this time:
+
+- **Watchers** — particularly Provers — independently re-execute the block's transactions against the claimed MPT roots.
+- If a watcher finds an inconsistency, they submit a fraud proof to the Cardano fraud-proof contracts.
+- A successful fraud proof results in the invalid block being rejected and the dishonest operator's entire bond being awarded to the challenger.
+- If the challenge window closes with no valid challenge, the block is merged into the confirmed state and becomes final.
+
+Because the Plutus VM is fully deterministic, every honest node running the same inputs will always reach the same outputs. This means fraud proofs on Cardano are binary — either the operator is right or the watcher is right — with no ambiguity.
+
+## Transaction Throughput
+
+Midgard imposes no hard protocol ceiling on transactions per second. Throughput scales with operator hardware and block size. Current benchmarks and targets are:
+
+| Target | TPS | Context |
+|--------|-----|---------|
+| Testnet baseline | 800 | Validated through controlled load testing |
+| Testnet industrial | 1,000 | Stable institutional-grade testnet operation |
+| Mainnet baseline | 2,000 | Comparable to established payment network throughput |
+| Practical mainnet | 5,000 | Commodity general-purpose hardware |
+
+Throughput grows in two ways: increasing **block size** (more transactions per block at constant on-chain cost, since headers are fixed-size) and increasing **operator commitment** requirements (faster hardware, better connectivity). The L2 architecture is designed to be compatible with future L1 scaling enhancements — such as Hydrozoa/Gummiworm-style state channels — that could push throughput beyond 20,000 TPS.
+
+## Latency and Finality
+
+<Tabs>
+  <Tab title="Transaction Latency">
+    Latency is the time from submitting a transaction to it appearing in a confirmed block. In normal operation:
+
+    - Your transaction propagates to the operator node over the network.
+    - The operator includes it in the next block, typically within **20 seconds** (one Cardano L1 slot interval).
+    - The block header is posted to the L1, making the transaction visible on-chain.
+
+    In practice, operators publish their work continuously, so users with a local watcher can observe and independently verify block validity in near real-time — well before the L1 anchor.
+  </Tab>
+  <Tab title="Practical Finality">
+    Practical finality is when a trusted off-chain service has verified all pending blocks and confirmed there is no detectable fraud. Watchers cache their verification results, so any previously verified block can be confirmed instantly on request.
+
+    For most use cases — payments, swaps, transfers — practical finality is what matters. It arrives within seconds of the block header hitting the state queue.
+  </Tab>
+  <Tab title="True Finality">
+    True finality is when the challenge window closes and the block is irrevocably merged into the confirmed state. The length of the challenge window is a configurable protocol parameter.
+
+    - Shorter window = faster true finality, slightly more reliance on watcher coverage.
+    - Longer window = slower true finality, more time to detect sophisticated attacks.
+
+    Governance (wBTC holders) sets the challenge window duration. See [Tokenomics](/concepts/tokenomics) for details on the governance model.
+  </Tab>
+</Tabs>
+
+## User Event Types
+
+Midgard recognizes four types of user events that operators pick up from Cardano L1 and process into blocks:
+
+<CardGroup cols={2}>
+  <Card title="Deposits" icon="arrow-down-to-line">
+    You lock funds in the L1 deposit contract. The operator includes the deposit event in the next L2 block, crediting your L2 balance.
+  </Card>
+  <Card title="Transaction Requests" icon="paper-plane">
+    Standard L2 transactions submitted directly to an operator node. Processed on a best-effort basis in block order.
+  </Card>
+  <Card title="Transaction Orders" icon="shield-check">
+    Guaranteed-inclusion transactions posted via the L1 contract. The operator is obligated to include these in the next eligible block, giving you censorship resistance even if an operator is uncooperative.
+  </Card>
+  <Card title="Withdrawals" icon="arrow-up-from-line">
+    You initiate a withdrawal on L2. After the challenge window, the L1 contract releases your funds back to your Cardano address. Facilitator watchers can front the liquidity for immediate settlement.
+  </Card>
+</CardGroup>
+
+## The Escape Hatch
+
+If the network stalls — for example, if no operator produces blocks for an extended period — the escape hatch activates. This is a special mechanism in the L1 contracts that allows you to exit the L2 and reclaim your funds directly on Cardano, without needing any operator's cooperation. Your assets are never trapped.
+
+<Warning>
+  The escape hatch is a safety mechanism for exceptional circumstances. Normal withdrawals process through the standard challenge-window flow. If you trigger an escape hatch exit, it may take longer than a standard withdrawal while the exit transaction is verified on-chain.
+</Warning>
+
+## Why Cardano's UTxO Model Helps
+
+Fraud proofs on account-based chains require replaying entire execution traces on-chain, which is expensive. On Cardano, every script execution is deterministic: the same inputs always produce the same outputs, with no hidden global state. This means:
+
+- A fraud proof only needs to identify the single UTxO-level step where the operator went wrong.
+- The on-chain verification is a targeted, bounded computation — not a full replay.
+- Verification costs are low and predictable, making it economically viable for any watcher to challenge invalid blocks.
+
+The same Plutus VM that validates smart contracts on Cardano L1 validates L2 state transitions. This isomorphism means DeFi applications can run the same contract logic on both layers, and developers can formally verify their L2 contracts using the same tools as their L1 contracts.
+
+## Related Pages
+
+<CardGroup cols={3}>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    How the L2 fits into Sundial's 7-layer protocol stack
+  </Card>
+  <Card title="Network Roles" icon="users" href="/concepts/roles">
+    Operators, Provers, and Facilitators who keep the L2 running
+  </Card>
+  <Card title="Tokenomics" icon="bitcoin" href="/concepts/tokenomics">
+    Operator bonds, fraud-proof rewards, and the wBTC fee model
+  </Card>
+</CardGroup>

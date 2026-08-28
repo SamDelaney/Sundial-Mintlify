@@ -1,0 +1,169 @@
+---
+title: "BTC Locker: How Bitcoin Staking Works on Sundial"
+sidebarTitle: "BTC Staking"
+description: "The BTC Locker protocol lets you stake Bitcoin using P2WSH timelock and escrow scripts. Learn the 4-transaction lifecycle, trust model, and how yield is distributed."
+---
+
+The BTC Locker is the Bitcoin-native staking layer at the heart of Sundial. It lets you lock BTC directly on Bitcoin's base layer — no bridges, no wrapped tokens — and earn yield from a yield provider. Your funds are secured by two Bitcoin scripts: a **Timelock (Return) script** that holds your principal until a deadline and an **Escrow script** that gives the provider a window to claim and distribute yield. After the deadline passes, you sweep both scripts in a single transaction to collect principal plus any distributed yield.
+
+## The 4-Transaction Staking Flow
+
+Every BTC Locker position follows the same four-transaction sequence. Before the flow begins, two P2WSH scripts are constructed — a Timelock script and an Escrow script — both using the same deadline so you can exit in a single operation.
+
+<Steps>
+  <Step title="Deposit">
+    You broadcast a Bitcoin transaction that funds both scripts simultaneously:
+    - The **Timelock (Return) script** receives a portion of your principal. Only you can spend it, and only after the deadline.
+    - The **Escrow script** receives the rest. The provider can claim this before the deadline; you can reclaim it after.
+
+    Both scripts are created with the same locktime value, so a single withdrawal transaction can sweep both outputs once the deadline arrives.
+
+    Every Deposit transaction includes an `OP_RETURN` output carrying a 60-byte `SNDL` metadata payload. This payload embeds the transaction type (`0x01`), a UUID identifying your deposit, and the provider's x-only public key — allowing the Sundial protocol to track and verify the position on-chain.
+  </Step>
+
+  <Step title="Claim">
+    Before the deadline, the yield provider sweeps the Escrow UTXO to their own address. They use the `OP_ELSE` branch of the Escrow script, which requires only their private key and has no time constraint on the upper bound.
+
+    If the provider fails to claim before the deadline, the Escrow UTXO remains unspent and you can reclaim it yourself during the Withdraw step.
+  </Step>
+
+  <Step title="Distribute">
+    After claiming, the provider sends funds back to your Timelock address — your principal plus the agreed yield. This is a standard Bitcoin transaction from the provider's wallet to your Return script address.
+
+    There is no on-chain link between the Claim and Distribute transactions. The connection between what the provider claimed and what they return is enforced by the off-chain signed agreement you establish with the provider before depositing.
+  </Step>
+
+  <Step title="Withdraw">
+    Once the deadline passes, you broadcast a single Bitcoin transaction that spends both UTXOs:
+    - The **Timelock script** via `OP_CHECKLOCKTIMEVERIFY` — the script unlocks as soon as `nLockTime ≥ locktime`.
+    - The **Escrow script** via the `OP_IF` branch — also gated by `OP_CHECKLOCKTIMEVERIFY`, so it only becomes spendable after the deadline.
+
+    You receive everything in one sweep: the original principal from the Timelock and the yield deposited by the provider.
+  </Step>
+</Steps>
+
+## Script Mechanics
+
+Understanding the two scripts helps you see exactly what Bitcoin enforces and what it does not.
+
+<Accordion title="Timelock (Return) Script">
+```
+<locktime> OP_CHECKLOCKTIMEVERIFY OP_DROP <user_pubkey> OP_CHECKSIG
+```
+
+`OP_CHECKLOCKTIMEVERIFY` enforces a lower-bound time lock: the spending transaction's `nLockTime` must be greater than or equal to `locktime` before the script will execute. Only the holder of `user_pubkey` can spend this output — no other party holds a key for it.
+</Accordion>
+
+<Accordion title="Escrow Script">
+```
+OP_IF
+  <deadline> OP_CHECKLOCKTIMEVERIFY OP_DROP <user_pubkey> OP_CHECKSIG
+OP_ELSE
+  <provider_pubkey> OP_CHECKSIG
+OP_ENDIF
+```
+
+The `OP_IF` branch is your reclaim path: available only after the deadline, requiring your signature. The `OP_ELSE` branch is the provider's claim path: available at any time, requiring only the provider's signature with no upper-bound time constraint. Both scripts share the same `deadline` value so you can spend both in the same transaction after the deadline.
+</Accordion>
+
+## Trust Model
+
+BTC Locker v0 is a **custodial yield protocol**. Here is exactly what Bitcoin enforces and what it does not:
+
+<Tabs>
+  <Tab title="What Bitcoin Enforces">
+    | Property | Mechanism |
+    |---|---|
+    | You cannot withdraw principal before the deadline | `OP_CHECKLOCKTIMEVERIFY` on both scripts |
+    | The provider cannot spend your Timelock script | Provider holds no key for it |
+    | Only you can use the `OP_IF` escrow reclaim path | `OP_CHECKSIG` against your public key |
+    | Only the provider can use the `OP_ELSE` claim path | `OP_CHECKSIG` against the provider's public key |
+    | Your `OP_IF` path requires `nLockTime ≥ deadline` | `OP_CHECKLOCKTIMEVERIFY` in the `OP_IF` branch |
+  </Tab>
+  <Tab title="What Bitcoin Does Not Enforce">
+    | Property | How It Is Governed |
+    |---|---|
+    | The provider's key is actually assigned to the provider | Convention — caller-supplied |
+    | The provider claims escrow only before the deadline | Off-chain signed agreement |
+    | The provider distributes the agreed yield amount | Off-chain signed agreement |
+    | The provider distributes yield to the correct Timelock address | Off-chain signed agreement |
+  </Tab>
+</Tabs>
+
+<Note>
+  Bitcoin's `OP_CHECKLOCKTIMEVERIFY` can enforce a lower bound on time ("not before X") but has no opcode for an upper bound ("not after X"). This is why the provider's `OP_ELSE` claim path has no time ceiling — it is a fundamental Bitcoin constraint, not a protocol design choice.
+</Note>
+
+## Race Condition Warning
+
+<Warning>
+  After the deadline passes, both the `OP_IF` (your reclaim) and `OP_ELSE` (provider's claim) paths of the Escrow script are simultaneously valid. A provider who acts in bad faith could sweep the Escrow UTXO after the deadline before you submit your withdrawal, causing you to lose that UTXO.
+
+  **Mitigate this risk by submitting your Withdraw transaction promptly once the deadline passes.** The Timelock UTXO is unaffected — only the Escrow UTXO is at risk.
+</Warning>
+
+## OP_RETURN Metadata
+
+Every protocol transaction embeds a 60-byte `SNDL` metadata payload in an `OP_RETURN` output. This allows Sundial to track staking positions on-chain without any trusted indexer.
+
+| Offset | Field | Description |
+|---|---|---|
+| 0–3 | `magic` | ASCII `"SNDL"` — protocol identifier |
+| 4 | `version` | Schema version (`0x01`) |
+| 5 | `txType` | `0x01` Deposit · `0x02` Claim · `0x03` Distribution · `0x04` Withdrawal |
+| 6–21 | `subjectId` | UUID v4 (16 raw bytes) identifying the deposit |
+| 22–53 | `providerXonlyPubkey` | 32-byte x-only public key of the yield provider |
+| 54–55 | `flags` | Reserved (`0x0000`) |
+| 56–59 | `checksum` | CRC-32 (IEEE 802.3) over bytes 0–55 |
+
+You can verify any Sundial transaction on Bitcoin testnet using the live transaction examples:
+
+- [Deposit (0x01)](https://mempool.space/testnet/tx/3a673e2b13aedae92bbe2589dcb161856aa26d86abc9e33541c8bf95ecf277c9)
+- [Claim (0x02)](https://mempool.space/testnet/tx/53fc2d443872e5818a5e0b10011620a3baa1d51a727bf103271bf24b36d9af0c)
+- [Distribution (0x03)](https://mempool.space/testnet/tx/435742c80b0ea67fbaea1fa28ce59079ebf47447dc3e61f76bbda6c74f029676)
+- [Withdrawal (0x04)](https://mempool.space/testnet/tx/87cc2463cc68030830b3c07141973f63d46a7df637a17b60b8d8d39c6490485b)
+
+## Supported Networks
+
+BTC Locker operates on **Bitcoin mainnet** and **Bitcoin testnet3**. Select your target network when initializing the SDK:
+
+```typescript
+import { createBTCLocker } from "@sundial-protocol/btc-locker";
+
+// Testnet
+const locker = await createBTCLocker("testnet");
+
+// Mainnet
+const locker = await createBTCLocker("mainnet");
+```
+
+## Quick Start
+
+Install the BTC Locker SDK from the Sundial package registry:
+
+```bash
+npm install @sundial-protocol/btc-locker
+```
+
+Then construct a timelock script and generate your deposit address:
+
+```typescript
+import { createBTCLocker, TimeUtils } from "@sundial-protocol/btc-locker";
+
+// Initialize for testnet
+const locker = await createBTCLocker("testnet");
+
+// Generate a key pair for this staking position
+const keyPair = await locker.generateKeyPair();
+
+// Lock for one week from now
+const locktime = TimeUtils.addDuration(TimeUtils.DURATIONS.WEEK);
+const script = await locker.createTimelockScript(locktime, keyPair.publicKey);
+
+console.log("Send Bitcoin to:", script.address);
+console.log("Funds locked until:", new Date(locktime * 1000));
+```
+
+<Tip>
+  Keep your `keyPair` and `locktime` values safe. You will need them to construct the Withdraw transaction after the deadline. The BTC Locker SDK does not store keys on your behalf.
+</Tip>

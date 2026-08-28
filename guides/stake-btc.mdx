@@ -1,0 +1,98 @@
+---
+title: "Stake Bitcoin on Sundial and Earn Yield"
+sidebarTitle: "Stake BTC"
+description: "Lock Bitcoin using Sundial's BTC Locker protocol to earn yield. Learn the 4-transaction lifecycle, fee structure, and how to monitor your staking position."
+---
+
+Sundial's BTC staking protocol locks your Bitcoin into a pair of on-chain Bitcoin scripts — a **P2WSH timelock** and an **escrow** — to earn yield from a verified yield provider. The scripts enforce your ownership rights at the Bitcoin protocol level: once the staking deadline passes, only you can withdraw. Staking takes four on-chain Bitcoin transactions across its full lifecycle, from your initial deposit to your final withdrawal.
+
+<Note>
+  BTC staking uses real Bitcoin script enforcement for principal protection, but the yield arrangement is governed by an agreement with the yield provider. Sundial's escrow script ensures you can always reclaim your principal after the deadline, regardless of provider behavior.
+</Note>
+
+## Prerequisites
+
+Before staking BTC on Sundial, make sure you have:
+
+- A Bitcoin wallet connected to the Sundial dashboard via Reown AppKit. See [Connect Your Wallet](/guides/connect-wallet) for setup instructions.
+- Sufficient BTC in your wallet to cover the deposit amount plus the estimated Bitcoin network fee shown before you sign.
+- For testnet: your Bitcoin wallet set to **testnet3**. Testnet addresses begin with `tb1q`.
+
+## The Staking Lifecycle
+
+BTC staking on Sundial follows a four-transaction lifecycle. Two of these steps are performed by you; two are performed automatically by the yield provider.
+
+<Steps>
+  <Step title="Deposit — lock your BTC into the escrow and timelock scripts">
+    You initiate the staking process from the Sundial dashboard.
+
+    1. Navigate to the **Dashboard** and open the **Stake** tab.
+    2. Select **Bitcoin** as the chain.
+    3. Choose a yield provider from the list of verified providers.
+    4. Enter the amount of BTC you want to stake. The dashboard displays the escrow amount, timelock amount, and estimated Bitcoin network fee before you sign.
+    5. Click **Stake**. Your wallet presents a **PSBT** (Partially Signed Bitcoin Transaction) for your review and approval.
+    6. Review the outputs in your wallet — the transaction sends funds to two addresses: the escrow script address and the timelock script address.
+    7. Sign and broadcast the transaction from your wallet.
+
+    Once the deposit transaction is confirmed on-chain, your staking position is active and visible in the **Portfolio** tab.
+
+    <Tip>
+      The dashboard shows a fee estimate before you sign. Bitcoin network fees fluctuate with mempool congestion — if fees are high, consider waiting for a less busy period.
+    </Tip>
+  </Step>
+  <Step title="Claim — yield provider takes custody of the escrow">
+    After your deposit confirms, the yield provider automatically claims the funds from the escrow script using their authorized key. This is an automatic step — **no action is required from you**.
+
+    The claim transaction spends the escrow UTXO and transfers the funds to the provider's operational wallet. Your timelock UTXO remains untouched and under your control after the deadline.
+  </Step>
+  <Step title="Distribute — provider returns yield to your timelock address">
+    Before the staking deadline, the yield provider sends your principal plus earned yield back to your **timelock address**. This is also automatic — **no action is required from you**.
+
+    The distribution transaction adds funds to your timelock address. The total amount you can withdraw at step 4 reflects both your original deposit (from the timelock) and any distributed yield.
+  </Step>
+  <Step title="Withdraw — claim all funds after the deadline">
+    After the staking deadline passes, you can sweep both the timelock UTXO and any remaining escrow UTXO back to your wallet in a single transaction.
+
+    1. Return to the Sundial dashboard and open the **Withdraw** tab.
+    2. Your eligible staking position appears with the total withdrawable amount.
+    3. Click **Withdraw**. Your wallet presents the withdrawal PSBT for review.
+    4. Sign and broadcast the transaction.
+
+    The withdrawal transaction is enforced by Bitcoin's `OP_CHECKLOCKTIMEVERIFY` — it cannot be broadcast before the deadline, and only your key can authorize it after the deadline.
+
+    <Warning>
+      Withdraw promptly after your deadline. There is a brief window after the deadline during which both you and the yield provider can spend the escrow UTXO (using the emergency reclaim path). To avoid any race condition, initiate your withdrawal as soon as the deadline passes.
+    </Warning>
+  </Step>
+</Steps>
+
+## Fee Structure
+
+The Sundial dashboard shows a fee breakdown before you sign any transaction:
+
+| Fee | Description |
+|---|---|
+| Bitcoin network fee | Paid to Bitcoin miners; estimated from current mempool conditions |
+| Protocol fee | Small fee sent to the Sundial fee address, if applicable for your chosen provider |
+
+All fees are denominated in BTC and shown in satoshis. No additional gas token is required.
+
+## Monitoring Your Staking Position
+
+After depositing, open the **Portfolio** tab in the Sundial dashboard to track your position. The Portfolio tab shows:
+
+- Your active staking positions and their deadlines
+- The current status of each lifecycle step (Deposited, Claimed, Distributed, Ready to Withdraw)
+- The total expected withdrawal amount once yield is distributed
+
+<Warning>
+  On testnet, BTC staking uses **testnet3 Bitcoin** — a valueless test network. Ensure your Bitcoin wallet is set to testnet3 before depositing. Testnet3 addresses start with `tb1q`. Never send mainnet BTC to a testnet staking position.
+</Warning>
+
+## Emergency Reclaim
+
+If you need to reclaim funds from the escrow independently — for example, if the timelock has already been swept or you want to spend the escrow and timelock UTXOs separately — you can use the **emergency reclaim path** from the Withdraw tab. This spends only the escrow UTXO using the post-deadline branch of the escrow script and requires your authorized key.
+
+This path is available only after the deadline. Under normal circumstances, the standard withdrawal (step 4 above) sweeps both UTXOs at once and is the recommended approach.
+
+For a deeper explanation of how the escrow and timelock scripts work together, see the [BTC Staking Protocol](/components/btc-staking) reference page.

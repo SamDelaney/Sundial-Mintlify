@@ -1,0 +1,243 @@
+---
+title: "Become a Facilitator: Accelerate Sundial Transfers"
+sidebarTitle: "Facilitators"
+description: "Facilitators earn fees by fronting instant deposits and withdrawals on Sundial, then waiting for the L2 maturity period. Learn registration, capital requirements, and the fee model."
+---
+
+Facilitators are voluntary intermediaries who speed up the deposit and withdrawal experience for Sundial users. Instead of waiting through the L2 maturity period themselves, users can opt for an accelerated transfer — and a Facilitator immediately fronts the funds on the destination chain in exchange for a fee. The Facilitator then waits out the maturity window and claims the L2 funds when they settle. You earn the spread between the fee you charge the user and your actual transaction cost; at volume, this becomes a reliable and scalable income stream.
+
+## How It Works
+
+Sundial's standard withdrawal flow requires a user to wait for the L2 maturity period before funds are available on L1. Facilitators compress this wait to near-zero for the user.
+
+<Tabs>
+  <Tab title="Accelerated Withdrawal">
+    In a standard withdrawal, the user submits a withdrawal request from the L2 and waits for the maturity period to clear before receiving funds on L1. With a Facilitator:
+
+    <Steps>
+      <Step title="User requests an accelerated withdrawal">
+        The user selects a Facilitator from the public Facilitator Registry and initiates a withdrawal, agreeing to the Facilitator's published fee rate.
+      </Step>
+      <Step title="Facilitator pays the user immediately">
+        You release the withdrawal amount to the user's L1 address from your own liquidity pool — the user receives funds right away, without waiting.
+      </Step>
+      <Step title="Facilitator claims the L2 funds">
+        You hold the corresponding L2 withdrawal claim and wait out the maturity period. Once it clears, you claim the L2 funds and recover your capital plus the fee spread.
+      </Step>
+    </Steps>
+
+    <Note>
+      The maturity period exists to allow Watchers time to detect and challenge any invalid blocks. Once the window passes without a successful fraud proof, the funds are provably safe to release.
+    </Note>
+  </Tab>
+  <Tab title="Accelerated Deposit">
+    In an accelerated deposit, you front-run a user's deposit on the L2 before the L1 deposit transaction has fully settled:
+
+    <Steps>
+      <Step title="User initiates a deposit">
+        The user broadcasts a deposit transaction on L1 and signals they want accelerated credit on L2.
+      </Step>
+      <Step title="Facilitator credits the user on L2">
+        You release the deposit amount to the user's L2 address from your L2 liquidity, enabling them to transact immediately.
+      </Step>
+      <Step title="Facilitator claims the L1 deposit">
+        Once the user's L1 deposit confirms and the bridge settlement completes, you claim the L1 funds as reimbursement, keeping the fee spread.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Incentives
+
+Your revenue as a Facilitator comes from the spread between the fee you charge users and the actual on-chain transaction cost:
+
+```text
+E[Payout_Fa] = λ_tx · (UserFee − TxFee) − C_operation − C_capital
+```
+
+Where:
+- `λ_tx` — number of transactions you facilitate
+- `UserFee` — fee you charge per transaction
+- `TxFee` — actual on-chain gas cost per transaction
+- `C_operation` — ongoing operating costs
+- `C_capital` — cost of deploying and maintaining your liquidity pool
+
+Facilitated transactions are expected to be frequent, but individual fees are small. Volume is key: the more requests you can process quickly and reliably, the more you earn.
+
+<Tip>
+Your fee schedule is publicly visible in the Facilitator Registry. Users compare Facilitators when choosing accelerated withdrawals — competitive, transparent pricing attracts more volume than high rates.
+</Tip>
+
+## Risk Profile
+
+<Warning>
+Facilitators take on L2 risk during the maturity window. If the L2 is found to be invalid during the window after you have already paid the user, you may not be able to recover the funds you fronted. **Running a Prover alongside your Facilitator service is the primary mitigation** — if you detect fraud yourself, you can challenge the block and recover your bond exposure before it affects your facilitated positions.
+</Warning>
+
+The risk window is bounded by the L2 maturity period. Once that period closes without a successful fraud proof, your claims are settled and your capital is recovered. Maintaining a healthy Prover service gives you the earliest possible warning of any L2 integrity issues.
+
+## Registering as a Facilitator
+
+Facilitators register on-chain via the Facilitator Registry. Your registration includes your fee schedule, receipt address, and liquidity pool address. Once registered, your entry is publicly visible to users selecting a Facilitator for their withdrawal.
+
+### Registration Schema
+
+The Watcher Toolkit provides the following endpoint definitions for Facilitator operations:
+
+```typescript
+export const FacilitatorEndpoints = S.Struct({
+  // Register as a new Facilitator with your fee schedule and addresses
+  register: S.Function(
+    S.Struct({
+      fee: S.Number,                              // Your fee rate (as a fraction or basis points)
+      receiptAddress: S.L1Address | S.L2Address,  // Address to receive facilitated funds
+      lpAddress: S.L1Address | S.L2Address,       // Liquidity pool address
+      credential: S.String                        // Your on-chain signing credential
+    }),
+    S.Void
+  ),
+
+  // Remove yourself from the Facilitator Registry
+  unregister: S.Function(
+    S.Struct({
+      receiptAddress: S.L1Address | S.L2Address,
+      credential: S.String
+    }),
+    S.Void
+  ),
+
+  // Update your fee rate, receipt address, or liquidity pool address
+  updateRegistration: S.Function(
+    S.Struct({
+      fee: S.Number,
+      receiptAddress: S.L1Address | S.L2Address,
+      lpAddress: S.L1Address | S.L2Address,
+      credential: S.String
+    }),
+    S.Void
+  ),
+
+  // Reference withdrawal transactions you facilitated on-chain
+  referenceWithdrawals: S.Function(
+    S.Array(
+      S.Struct({
+        transactionHash: S.String,              // Hash of the facilitated withdrawal tx
+        value: S.Number,                        // Value of the withdrawal
+        endUser: S.L1Address | S.L2Address      // End user's address
+      }),
+      S.Void
+    ),
+  ),
+});
+```
+
+### Key Registration Fields
+
+<ParamField body="fee" type="number" required>
+  Your fee rate for facilitated transactions. This is displayed publicly in the Facilitator Registry. Set this to a rate that covers your costs and opportunity cost of capital while remaining competitive.
+</ParamField>
+
+<ParamField body="receiptAddress" type="string" required>
+  The L1 or L2 address where you receive the user's withdrawal claim after facilitating. Must be an address you control.
+</ParamField>
+
+<ParamField body="lpAddress" type="string" required>
+  The address of your liquidity pool from which you front funds to users. Ensure this address has sufficient balance before registering.
+</ParamField>
+
+<ParamField body="credential" type="string" required>
+  Your on-chain signing credential used to authorize registry operations. Keep this secure — it authorizes updates and unregistration.
+</ParamField>
+
+## Getting Started
+
+<Steps>
+  <Step title="Fund your liquidity pool">
+    Deposit wBTC into the address you intend to use as your `lpAddress`. Your pool balance caps the total value of withdrawals you can facilitate simultaneously. Start with an amount you are comfortable having locked during the maturity period.
+  </Step>
+  <Step title="Register in the Facilitator Registry">
+    Call the `register` endpoint with your fee rate, receipt address, liquidity pool address, and signing credential. After the transaction confirms, your Facilitator entry is live and visible to users.
+
+    ```typescript
+    await facilitator.register({
+      fee: 0.001,            // 0.1% fee rate
+      receiptAddress: "addr1...",
+      lpAddress: "addr1...",
+      credential: "your-credential-here"
+    });
+    ```
+  </Step>
+  <Step title="Stake your challenge bond">
+    In addition to your liquidity pool, you must stake a challenge bond. This bond is your commitment to honest facilitation and is required to reference withdrawals on-chain.
+  </Step>
+  <Step title="Start monitoring for requests">
+    Deploy the Facilitator reference implementation from the Watcher Toolkit. The service monitors the withdrawal queue for requests directed at your Facilitator entry and automatically fronts transactions within your configured parameters.
+
+    ```bash
+    sundial-watcher facilitator \
+      --config ./facilitator-config.json \
+      --lp-address addr1... \
+      --receipt-address addr1...
+    ```
+  </Step>
+  <Step title="Reference completed withdrawals">
+    After the maturity period clears for withdrawals you've facilitated, call `referenceWithdrawals` to record them on-chain. This builds your verifiable facilitation history in the registry — a public track record that helps attract future users.
+
+    ```typescript
+    await facilitator.referenceWithdrawals([
+      {
+        transactionHash: "abc123...",
+        value: 0.05,
+        endUser: "addr1..."
+      }
+    ]);
+    ```
+  </Step>
+</Steps>
+
+## Updating or Leaving the Registry
+
+You can update your fee schedule or addresses at any time without losing your facilitation history. If you want to stop operating, call `unregister` to remove your entry from the public registry. Outstanding maturity periods for withdrawals you have already facilitated are unaffected — they continue to settle normally.
+
+```typescript
+// Update fee rate
+await facilitator.updateRegistration({
+  fee: 0.0008,
+  receiptAddress: "addr1...",
+  lpAddress: "addr1...",
+  credential: "your-credential-here"
+});
+
+// Unregister
+await facilitator.unregister({
+  receiptAddress: "addr1...",
+  credential: "your-credential-here"
+});
+```
+
+## Facilitator Economics Summary
+
+| Factor | Impact |
+|---|---|
+| **Fee rate** | Higher rate = more per transaction, but lower user demand |
+| **Liquidity pool size** | Larger pool = more simultaneous facilitations |
+| **Transaction volume** | Primary revenue driver — volume compounds returns |
+| **Maturity window** | Capital is locked for the maturity period per facilitated withdrawal |
+| **Running a Prover** | Reduces L2 risk exposure during maturity window |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Watcher Guide" icon="eye" href="/guides/watchers">
+    Learn about the other three Watcher roles — Prover, Archivist, and Canary — that complement the Facilitator role.
+  </Card>
+  <Card title="Run a Prover" icon="shield-check" href="/guides/watchers">
+    Provers monitor for fraud and claim slashed bonds. Running one alongside your Facilitator service is the best way to protect your liquidity.
+  </Card>
+  <Card title="Tokenomics" icon="coins" href="/concepts/tokenomics">
+    Full incentive math for Facilitators, including fee calibration and capital efficiency analysis.
+  </Card>
+  <Card title="Operator Guide" icon="server" href="/guides/operators">
+    Consider also running a Layer Node to earn block production fees on top of your facilitation income.
+  </Card>
+</CardGroup>

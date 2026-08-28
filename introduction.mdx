@@ -1,0 +1,106 @@
+---
+title: "Sundial Protocol: Bitcoin-Native Yield on Cardano L2"
+sidebarTitle: "Introduction"
+description: "Sundial Protocol combines Bitcoin staking, an optimistic rollup Layer 2 on Cardano, and the Charms cross-chain bridge to deliver institutional-grade BTC yield."
+---
+
+Sundial Protocol is a Bitcoin-native yield platform built on Midgard, an optimistic rollup Layer 2 that settles to Cardano. You stake real BTC, earn real yield, and interact with a high-throughput L2 capable of processing 2,000–5,000 transactions per second — all without a new governance token. Sundial uses wrapped BTC (wBTC) as its unit of account throughout, so your returns are always denominated in Bitcoin.
+
+## Why Sundial
+
+Most DeFi yield platforms require you to bridge into an unfamiliar token ecosystem and trust centralized custodians. Sundial takes a different approach: your BTC is locked by audited on-chain scripts, secured by cryptographic fraud proofs, and settled on Cardano's battle-tested Ouroboros consensus. The result is a yield product that stays Bitcoin-native from deposit to payout.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Connect your wallet, claim testnet tokens, and make your first stake in under 5 minutes.
+  </Card>
+  <Card title="Testnet Guide" icon="flask" href="/testnet-guide">
+    Everything you need to use the Sundial testnet: wallets, faucet, network details, and the CLI tool.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/concepts/architecture">
+    Understand the full Sundial stack — BTC Locker, Midgard L2, Charms Bridge, and Alchemy.
+  </Card>
+  <Card title="API Overview" icon="code" href="/api/overview">
+    Explore the node HTTP RPC surface, TypeScript SDK, and BTC Locker SDK reference.
+  </Card>
+</CardGroup>
+
+## The Four Pillars
+
+Sundial is composed of four interconnected components that work together to move BTC into yield-bearing positions entirely on-chain.
+
+<AccordionGroup>
+  <Accordion title="BTC Locker — Bitcoin Staking" icon="lock">
+    The BTC Locker accepts native Bitcoin through a four-transaction staking flow: **Deposit → Claim → Distribute → Withdraw**. Each step is governed by P2WSH timelock and escrow scripts, meaning your Bitcoin never passes through a centralized bridge operator. The `@sundial-protocol/btc-locker` SDK (v2.0.5) lets developers integrate this flow directly into their own applications.
+  </Accordion>
+  <Accordion title="Midgard L2 — Optimistic Rollup" icon="layer-group">
+    Midgard is Sundial's Layer 2 blockchain, built on the Midgard L2 Framework and settling to Cardano. It targets 2,000–5,000 TPS with fraud-proof security, using the same Plutus VM as Cardano L1. This isomorphism means L1 smart contracts can run on L2 with no rewrite, and developers can formally verify their applications using standard Cardano tooling. Block headers are committed to Cardano's state queue; full block data is published to Cardano's data-availability layer (Leios).
+  </Accordion>
+  <Accordion title="Charms Bridge — Trustless Cross-Chain Transfers" icon="bridge">
+    The Charms bridge connects Bitcoin directly to the Sundial L2 using Groth16 zk-SNARK verification. Rather than relying on a multisig federation, Charms verifies cryptographic proofs on-chain, making cross-chain transfers trustless and permissionless. Unlocking assets back to Bitcoin uses Mithril threshold signatures for an additional layer of cryptographic security.
+  </Accordion>
+  <Accordion title="Alchemy — Reserve Asset Creation" icon="flask">
+    Alchemy creates two structured reserve assets from BTC collateral:
+    - **FIRE** — a high-beta BTC growth token designed for users who want amplified upside exposure.
+    - **ICE** — a senior BTC-backed USD claim for users who prefer capital preservation with stable yield.
+
+    These instruments give you precise control over your risk/return profile without leaving the Bitcoin ecosystem.
+  </Accordion>
+</AccordionGroup>
+
+## Who Sundial Is For
+
+Sundial serves three distinct groups, each with a tailored experience.
+
+<Tabs>
+  <Tab title="End Users">
+    If you hold BTC or ADA and want to put it to work, Sundial's dashboard is the starting point. You connect a supported wallet, choose a staking position, and track your yield in the portfolio tab — no command line required.
+
+    **Supported Cardano wallets:** Eternl, Lace, Typhon, Yoroi, GeroWallet, NuFi
+
+    **Supported Bitcoin wallets:** Any wallet compatible with Reown AppKit
+
+    Start with the [Quickstart](/quickstart) to make your first testnet stake.
+  </Tab>
+  <Tab title="Developers">
+    If you're building an application on Sundial's L2 or integrating BTC staking into your product, Sundial provides two TypeScript SDKs:
+
+    - **`@al-ft/midgard-sdk` v0.1.0** — build, sign, and submit L2 transactions; query UTxOs, address history, and block data from the node's HTTP RPC.
+    - **`@sundial-protocol/btc-locker` v2.0.5** — construct and broadcast the four-transaction BTC staking flow from your own application.
+
+    The testnet node API is available at `https://rpc.testnet.sundialprotocol.com`. See the [API Overview](/api/overview) to get started.
+  </Tab>
+  <Tab title="Operators & Watchers">
+    Sundial's network is sustained by two categories of participants:
+
+    **Operators** are block producers. They run the `midgard-node`, collect L2 transactions into blocks, commit block headers to Cardano, and earn fees for doing so.
+
+    **Watchers** fill four specialized roles:
+    - **Provers** — construct and submit fraud proofs when an invalid block is committed.
+    - **Facilitators** — provide liquidity to accelerate deposits and withdrawals.
+    - **Archivists** — maintain the decentralized data archive for historical block data.
+    - **Canaries** — monitor the network for anomalies and alert on irregularities.
+
+    See the [Architecture](/concepts/architecture) docs for full role responsibilities and hardware requirements.
+  </Tab>
+</Tabs>
+
+## Security
+
+Sundial's security model is grounded in cryptography, not trust.
+
+<CardGroup cols={3}>
+  <Card title="Hacken Audited" icon="shield-check">
+    Sundial's smart contracts have been independently audited by Hacken. Audit reports are publicly available in the repository.
+  </Card>
+  <Card title="Fraud-Proof Protected" icon="magnifying-glass">
+    The Midgard L2 uses an optimistic rollup model with on-chain fraud proofs. Any invalid block committed by an operator can be challenged and invalidated by a Prover Watcher, with no trust in the operator required.
+  </Card>
+  <Card title="Open Source" icon="code-branch">
+    All Sundial smart contracts, the node, and the SDKs are released under the Apache 2.0 license. You can read, audit, and fork the code at any time.
+  </Card>
+</CardGroup>
+
+<Note>
+  The current testnet deployment runs against placeholder validators for development purposes. On-chain fraud-proof enforcement is active on the production network. Never point real funds at testnet addresses.
+</Note>

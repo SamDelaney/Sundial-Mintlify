@@ -1,0 +1,85 @@
+---
+title: "Claim Testnet sBTC from the Sundial Faucet"
+sidebarTitle: "Faucet"
+description: "Claim free sBTC test tokens from the Sundial testnet faucet. Learn how to find your testnet address, submit a claim, and fix common faucet errors."
+---
+
+The Sundial testnet faucet is a free service that gives you **testnet sBTC** — Sundial's synthetic BTC token on the Midgard Layer 2 — so you can explore the protocol without risking any real funds. Testnet sBTC has no monetary value and cannot be transferred to any mainnet network. Every address can claim once per cooldown period, keeping the faucet available for all testers.
+
+<Warning>
+  Testnet tokens have no monetary value. Never send real BTC or ADA to a testnet address, and do not reuse a wallet that holds real funds for testnet activity.
+</Warning>
+
+## Testnet Network Details
+
+Before you claim, make sure you have the following details:
+
+| Detail | Value |
+|---|---|
+| Faucet URL | `https://www.sundialprotocol.com/testnet/faucet` |
+| Required address format | `addr_test1...` (Cardano Preprod) |
+| Token | sBTC |
+| Unit conversion | 1,000,000 lovelace = 1 sBTC |
+| Network | Cardano Preprod (testnet) |
+
+## Claim Testnet sBTC
+
+<Steps>
+  <Step title="Set your Cardano wallet to Preprod testnet">
+    Open your Cardano wallet extension (Eternl, Lace, Typhon, Yoroi, GeroWallet, or NuFi) and navigate to its **Settings** or network selector. Switch the network from **Mainnet** to **Testnet** or **Preprod**.
+
+    <Note>
+      If your wallet shows an address starting with `addr1` instead of `addr_test1`, it is still on mainnet. Switch networks before continuing.
+    </Note>
+  </Step>
+  <Step title="Copy your testnet payment address">
+    Open the **Receive** screen in your wallet and copy your payment address. A valid testnet address always starts with `addr_test1`. This is the address the faucet will send sBTC to — no wallet connection or signature is required on the faucet page itself.
+  </Step>
+  <Step title="Go to the Sundial faucet">
+    Navigate to [sundialprotocol.com/testnet/faucet](https://www.sundialprotocol.com/testnet/faucet) in your browser.
+  </Step>
+  <Step title="Paste your address and submit">
+    Paste your `addr_test1...` address into the **Sundial testnet address** input field. Click **Request testnet sBTC** to submit the claim.
+  </Step>
+  <Step title="Confirm your claim">
+    On success, the page displays a confirmation showing:
+
+    - **Grant amount** — the amount of testnet sBTC sent to your address.
+    - **Next eligible at** — the earliest time this address can claim again.
+    - **Claim ID** and **Transaction hash** — reference IDs you can copy for your records.
+
+    Refresh your wallet's balance (still on the Preprod testnet network) to see the sBTC appear. Because sBTC lives on Sundial's Midgard L2, it will not appear on standard Cardano L1 block explorers — your wallet balance and the faucet confirmation are the authoritative sources during the testnet phase.
+  </Step>
+</Steps>
+
+<Tip>
+  Once you have testnet sBTC, use it to explore the full staking and withdrawal flows on the Sundial testnet dashboard without putting any real funds at risk. See the [Stake ADA guide](/guides/stake-ada) and [Stake BTC guide](/guides/stake-btc) to get started.
+</Tip>
+
+## Troubleshooting Faucet Errors
+
+<AccordionGroup>
+  <Accordion title='"Already claimed" — cooldown period active'>
+    Your address has already claimed testnet sBTC within its cooldown window. Each address must wait until the **Next eligible at** time shown in the last claim confirmation before it can claim again.
+
+    To continue testing right away, switch your wallet to a different testnet address, or wait until the cooldown expires. You can generate additional testnet addresses from within your wallet extension.
+  </Accordion>
+  <Accordion title='"Invalid address" — address format not accepted'>
+    The faucet only accepts standard Cardano Preprod payment addresses that start with `addr_test1`. Common causes:
+
+    - Your wallet is still on **Mainnet** — mainnet addresses start with `addr1` and will be rejected.
+    - You copied a **stake address** (starts with `stake_test1`) instead of a payment address. Use the address from your wallet's **Receive** screen, not the staking section.
+    - You copied a **script address** or contract address. Use a regular wallet receive address.
+
+    Switch your wallet to Preprod, go to the **Receive** screen, and copy the address displayed there.
+  </Accordion>
+  <Accordion title='"Network error" — faucet temporarily unavailable'>
+    The faucet service may be momentarily unavailable. Wait a few minutes and try submitting your claim again. If the error persists for more than 15 minutes, report it to the Sundial team — this is useful testnet feedback.
+  </Accordion>
+  <Accordion title='"Faucet out of funds" — depleted'>
+    The faucet wallet is temporarily low on testnet sBTC. The faucet is refilled periodically. Try again later — typically within a few hours.
+  </Accordion>
+  <Accordion title='"Browser claim limit reached" — too many claims from your network'>
+    A daily cap on total claims from a given browser or network has been reached. This limit exists to keep the shared faucet available for all testers. Try again later, or claim from a different network connection.
+  </Accordion>
+</AccordionGroup>

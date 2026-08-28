@@ -1,0 +1,207 @@
+---
+title: "Network Roles: Operators, Watchers & Users"
+sidebarTitle: "Network Roles"
+description: "Sundial Protocol has four participant roles — Layer Operators, Watchers (Provers, Facilitators, Archivists, Canaries), Liquidity Providers, and Users — each with distinct responsibilities."
+---
+
+Sundial Protocol is maintained by a decentralized set of participants, each playing a distinct role in keeping the network fast, secure, and honest. No single entity controls the system — operators produce blocks, watchers verify them, liquidity providers stabilize the economics, and users drive real activity. This page gives you a map of who does what and how each role is rewarded.
+
+## Role Overview
+
+<CardGroup cols={2}>
+  <Card title="Layer Operators" icon="server">
+    Run Midgard nodes, produce L2 blocks, and stake wBTC collateral. Earn transaction fees for honest block production.
+  </Card>
+  <Card title="Bridge Operators" icon="bridge">
+    Run Cardinal, Charms, or FluidTokens bridge nodes. Facilitate trustless Bitcoin↔Cardano asset transfers.
+  </Card>
+  <Card title="Watchers" icon="eye">
+    Monitor the network reactively. Four sub-roles — Prover, Facilitator, Archivist, Canary — each with its own incentive structure and no collateral requirement.
+  </Card>
+  <Card title="Liquidity Providers" icon="droplet">
+    Supply capital to shared liquidity pools. Earn passive yield while enabling DeFi activity, Babel fee conversions, and accelerated bridge transfers.
+  </Card>
+</CardGroup>
+
+---
+
+## Layer Operators (Block Producers)
+
+Layer Operators are the backbone of the Sundial L2. They run Midgard nodes, process transactions, build blocks, and commit block headers to Cardano.
+
+### Responsibilities
+
+- **Transaction processing** — receive L2 transactions, validate them against the current ledger state, and include them in blocks.
+- **Block commitment** — periodically commit a block header (containing Merkle Patricia Trie root hashes) to the Cardano state queue contract.
+- **Network maintenance** — monitor node health, maintain uptime, and respond to L1 user-event syncs (deposits, transaction orders, withdrawals).
+- **Operator registration** — maintain an active entry in the on-chain Operator Registry with a valid bond.
+
+### Staking and Slashing
+
+To become a Layer Operator, you must post a **wBTC collateral bond** to the Operator Registry. This bond:
+
+- Aligns your financial interests with honest block production.
+- Is slashed in full and awarded to any watcher who successfully proves one of your blocks is fraudulent.
+- Is returned when you deregister and exit, provided no outstanding challenges exist against your blocks.
+
+Because Cardano's deterministic UTxO model makes fraud proofs unambiguous, the risk of accidental slashing is negligible for operators who follow the protocol correctly. The bond size is governed by wBTC holders — see [Tokenomics](/concepts/tokenomics).
+
+### Incentives
+
+Operators earn a share of the transaction fees included in the blocks they produce. The expected payout depends on transaction volume, the number of active operators sharing the fee pool, and hardware/network costs. Governance can adjust fee parameters to maintain a healthy operator set.
+
+<Tip>
+  The Operator Toolkit — available in SL7 — provides a CLI, configuration templates, and monitoring dashboards to help you set up and manage a Layer Operator node. See the [Layer Node guide](/operators/layer-node) to get started.
+</Tip>
+
+### VRF-Based Block Scheduling
+
+Operators are not selected in a fixed round-robin. Midgard uses Verifiable Random Function (VRF) scheduling to determine which operator produces each block. This prevents predictable targeting of specific operators and ensures fair access to block rewards without favoring any participant based on registration order.
+
+---
+
+## Bridge Operators
+
+Bridge Operators run nodes for one or more of Sundial's three bridge integrations: Cardinal, Charms, and the FluidTokens bridge. Each bridge has its own technical model.
+
+<Tabs>
+  <Tab title="Cardinal">
+    Cardinal uses **MuSig2 aggregated multi-signatures** and **HTLC (Hashed Timelock Contracts)** to manage Bitcoin UTxOs, paired with **BitVMX fraud proofs** for dispute resolution. The trust model is 1-of-n honest: as long as one operator behaves correctly, the bridge is secure.
+
+    Cardinal operators are responsible for:
+    - Locking Bitcoin UTxOs via MuSig2.
+    - Monitoring lock confirmations and coordinating minting of 1:1 pegged Sundial assets.
+    - Executing the burn/release lifecycle when users peg out.
+    - Participating in BitVMX Dispute Resolution Protocol (DRP) if a challenge is raised.
+
+    Operators earn transaction fees for each lock/mint/burn/release cycle and may earn additional rewards for successful fraud-proof participation.
+  </Tab>
+  <Tab title="Charms">
+    Charms enables **programmable, portable Bitcoin assets** using **recursive Groth16 zk-SNARK proofs** verified entirely client-side — no on-chain bridge contract is required. Assets "beam" across chains by proving inclusion in Bitcoin blocks.
+
+    Charms bridge operators act as **Bitcoin Oracle Operators**:
+    - Run a fully validating Bitcoin node.
+    - Extract Merkle inclusion proofs and proof-of-work finality data for beaming transactions.
+    - Serve these proofs to Charms client libraries so wallets can verify cross-chain transfers.
+
+    Operators earn attestation fees. Multi-operator setups improve reliability and share fee revenue. See [Charms Bridge](/components/charms-bridge) for technical detail.
+  </Tab>
+  <Tab title="FluidTokens">
+    The FluidTokens bridge targets a 1-of-n or fully trustless design. Operator requirements and fee structures will be published as the integration is finalized.
+  </Tab>
+</Tabs>
+
+---
+
+## Watchers
+
+Watchers play a **reactive role** — they monitor what operators do and respond when something requires action or can be accelerated. Unlike operators, watchers do not need to reserve collateral to participate (with the exception of the small challenge bond Provers post when submitting fraud proofs). Multiple watchers compete for the same rewards, which keeps the network honest and responsive.
+
+All four watcher roles share a common infrastructure base. Most watcher operators run all four roles simultaneously to maximize revenue from the same hardware investment.
+
+### Provers
+
+Provers continuously verify L2 blocks as they arrive in the state queue. Their job is to catch any block where an operator's claimed state transition does not match the actual transactions.
+
+**How it works:**
+
+<Steps>
+  <Step title="Monitor the State Queue">
+    The Prover watches the Cardano state queue for newly committed block headers.
+  </Step>
+  <Step title="Re-execute the Block">
+    The Prover fetches the block data and re-executes all transactions against the claimed Merkle Patricia Trie roots, using the same deterministic Plutus VM rules as the operator.
+  </Step>
+  <Step title="Submit a Fraud Proof (if needed)">
+    If the re-execution reveals a mismatch, the Prover submits a fraud proof to the on-chain fraud-proof contracts, along with a small challenge bond.
+  </Step>
+  <Step title="Claim the Bounty">
+    A successful fraud proof slashes the operator's full bond and awards it to the Prover. A failed proof forfeits the challenge bond to the treasury.
+  </Step>
+</Steps>
+
+**Incentives:** Provers earn the **full operator bond** on a successful fraud proof — a substantial reward, given that governance sets bond sizes high to deter misbehavior. Between faults, Provers earn smaller **Proof of Diligence (PoD)** payments for actively verifying blocks, keeping the system economically viable even in periods with no malicious activity.
+
+### Facilitators
+
+Facilitators accelerate deposits and withdrawals by fronting liquidity on the destination side so users do not need to wait for the full challenge window.
+
+When you request an accelerated withdrawal, a Facilitator:
+1. Verifies your withdrawal event is valid and included in the state queue.
+2. Pays you your funds immediately on Cardano L1 from their own liquidity pool.
+3. Waits for the challenge window to close and claims the funds from the L1 settlement contract.
+
+The Facilitator earns a **fee spread** — the difference between what you pay for immediate settlement and the base transaction cost. Fees are competitive because multiple Facilitators are registered in the on-chain Facilitator Registry.
+
+<Note>
+  You can always withdraw without a Facilitator — you simply wait for the challenge window to close. Facilitators are entirely optional and only earn a fee if you choose to use them.
+</Note>
+
+### Archivists
+
+Archivists store complete historical block data — full block bodies, not just headers. This historical archive serves:
+
+- Other watchers preparing fraud proofs that need access to past state.
+- DeFi applications and analytics platforms querying historical balances and transactions.
+- Users auditing their own transaction history.
+
+Archivists charge **access fees** for retrieving historical data. They set their own pricing based on storage costs and demand. The decentralized, data-duplicated nature of the archivist network means no single party controls access to Sundial's history.
+
+### Canaries
+
+Canaries provide opt-in, customizable monitoring services to users or dApps that want an additional layer of security beyond the base Prover coverage.
+
+Unlike Provers — who watch for fraud in block state transitions — Canaries offer broader L2 surveillance: network health, unusual transaction patterns, potential censorship, and other anomalies that fall outside the formal fraud-proof process.
+
+Canaries are free to define their own terms: what they monitor, how they report findings, and what they charge. Users subscribe to a Canary's service and pay a **subscription fee** in return for customized alerts. The protocol takes a hands-off approach to Canary operation, allowing the market to determine which monitoring services are most valued.
+
+<Tip>
+  The Watcher Toolkit — available in SL7 — provides containerized applications covering all four watcher roles, plus documentation to help you calibrate alerting thresholds, manage liquidity for Facilitator operations, and tune storage for Archivist workloads. See the [Watchers guide](/guides/watchers) to get started.
+</Tip>
+
+---
+
+## Liquidity Providers
+
+Liquidity Providers (LPs) supply capital to the shared liquidity pools at SL4 of the protocol stack. They do not actively monitor the network or produce blocks — their contribution is passive capital that the protocol puts to work.
+
+LP capital enables:
+
+- **Babel fee conversions** — the liquidity that allows any supported asset to be converted to wBTC for fee payment.
+- **Facilitator operations** — Facilitators draw on LP pools to front withdrawal liquidity.
+- **DeFi integrations** — verified dApps access shared pools rather than fragmenting liquidity across isolated contracts.
+
+LPs earn yield proportional to their share of each pool and the volume of activity that uses it. Pool composition and yield rates are governed by wBTC holders and adjusted over time to maintain healthy liquidity depth.
+
+---
+
+## Users
+
+Users are the reason the protocol exists. You can interact with Sundial in whatever capacity suits you — submitting transactions, staking assets, using yield instruments, or simply bridging Bitcoin in and out. No specific role or collateral is required to use the network.
+
+You interact with Sundial through:
+
+- **Supported wallets** — Eternl, Lace, Typhon, Yoroi, GeroWallet, NuFi (Cardano); Reown AppKit (Bitcoin).
+- **Financial dashboard** — manage balances, staking positions, and yield strategies.
+- **User Actions API** — programmatic access for developers building applications on Sundial.
+
+The protocol assumes you act in your own self-interest, and the incentive design of every other role is built around ensuring your interests are protected — even if every operator or watcher behaved selfishly, the fraud-proof system and escape hatch guarantee that your funds are always recoverable.
+
+---
+
+## Quick-Start Guides by Role
+
+<CardGroup cols={2}>
+  <Card title="Become a Layer Operator" icon="server" href="/guides/operators">
+    Set up a Midgard node, post your bond, and start earning block fees
+  </Card>
+  <Card title="Run a Watcher" icon="eye" href="/guides/watchers">
+    Deploy all four watcher roles with the containerized Watcher Toolkit
+  </Card>
+  <Card title="Become a Facilitator" icon="bolt" href="/guides/facilitators">
+    Front liquidity for accelerated deposits and withdrawals and earn fees
+  </Card>
+  <Card title="Explore the Dashboard" icon="chart-bar" href="/quickstart">
+    Connect your wallet and start staking BTC or ADA on Sundial
+  </Card>
+</CardGroup>

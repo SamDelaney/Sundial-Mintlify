@@ -1,0 +1,273 @@
+---
+title: "Sundial Node Configuration: L1 Provider, Network & Timing"
+sidebarTitle: "Configuration"
+description: "Configure the Sundial node via environment variables: L1 provider, network, operator credentials, block timing, Redis, PostgreSQL, and monitoring settings."
+---
+
+The Sundial node reads all of its configuration from environment variables at startup. No flags or command-line arguments are required for the core settings — everything lives in a `.env` file that you create from the provided example. This reference covers every variable that operators need to control: your Cardano L1 provider, network selection, operator credentials, block production timing, Redis and PostgreSQL connection details, and the monitoring stack.
+
+<Note>
+  The template lives at `demo/midgard-node/.env.example` in the monorepo. Bootstrap your own file with `cp .env.example .env`, then edit it before starting the node.
+</Note>
+
+## L1 Provider
+
+The node connects to Cardano L1 through one of two provider modes. Choose Blockfrost for the fastest initial setup, or Kupmios if you are running your own Cardano infrastructure and want lower latency and no external API dependency.
+
+<Tabs>
+  <Tab title="Blockfrost (recommended for quick start)">
+    ```env
+    L1_PROVIDER=Blockfrost
+    L1_BLOCKFROST_API_URL=https://cardano-preprod.blockfrost.io/api/v0
+    L1_BLOCKFROST_KEY=preprodYOUR_KEY_HERE
+    ```
+
+    Get a free API key at [blockfrost.io](https://blockfrost.io). For testnet, create a project under the **Preprod** network. For mainnet, create a **Mainnet** project and update `L1_BLOCKFROST_API_URL` accordingly.
+
+    <Tip>
+      Start with Blockfrost to get running in minutes, then switch to Kupmios once you have a local Cardano node deployed for production reliability and higher throughput.
+    </Tip>
+  </Tab>
+  <Tab title="Kupmios (local, production)">
+    ```env
+    L1_PROVIDER=Kupmios
+    L1_KUPO_KEY=http://localhost:1442
+    L1_OGMIOS_KEY=ws://localhost:1337
+    ```
+
+    `L1_KUPO_KEY` and `L1_OGMIOS_KEY` are passed directly to Lucid Evolution — set them to the HTTP URL of your Kupo instance and the WebSocket URL of your Ogmios instance respectively.
+
+    When using Kupmios, `L1_BLOCKFROST_API_URL` and `L1_BLOCKFROST_KEY` must still be present in your `.env` (they can be empty strings). The config loader always reads all provider variables.
+  </Tab>
+</Tabs>
+
+## Network
+
+Set `NETWORK` to match the Cardano network your L1 provider is connected to. The value is passed directly to Lucid Evolution.
+
+```env
+NETWORK=Preprod   # For testnet
+NETWORK=Mainnet   # For mainnet
+```
+
+Valid values are `Mainnet`, `Preprod`, `Preview`, and `Custom`. `Preprod` is the standard testnet used by Sundial during the testnet phase.
+
+<Warning>
+  Mismatching `NETWORK` and your L1 provider network (e.g., setting `NETWORK=Mainnet` with a Preprod Blockfrost key) will cause the node to fail at startup or produce incorrect block commitments. Always keep these in sync.
+</Warning>
+
+## Operator Credentials
+
+The node requires three separate operator wallets, each used for a different on-chain role. Supply each as a 24-word BIP-39 seed phrase:
+
+```env
+# Main operator identity wallet
+L1_OPERATOR_SEED_PHRASE="word1 word2 word3 ... word24"
+
+# Wallet used to sign and submit block-header commitment transactions
+L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT="word1 word2 word3 ... word24"
+
+# Wallet used to sign and submit state-queue merge transactions
+L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX="word1 word2 word3 ... word24"
+```
+
+<Warning>
+  Use three distinct, freshly generated seed phrases — one per variable. Never reuse a genesis wallet seed or a faucet wallet seed as an operator seed. Keep all three seed phrases stored securely and offline.
+</Warning>
+
+## Core Configuration Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NETWORK` | Yes | — | Cardano network: `Mainnet`, `Preprod`, `Preview`, or `Custom` |
+| `L1_PROVIDER` | Yes | — | L1 provider mode: `Blockfrost` or `Kupmios` |
+| `L1_BLOCKFROST_API_URL` | Blockfrost only | — | Blockfrost REST API base URL |
+| `L1_BLOCKFROST_KEY` | Blockfrost only | — | Blockfrost project API key |
+| `L1_KUPO_KEY` | Kupmios only | — | Kupo HTTP endpoint URL |
+| `L1_OGMIOS_KEY` | Kupmios only | — | Ogmios WebSocket endpoint URL |
+| `L1_OPERATOR_SEED_PHRASE` | Yes | — | Main operator wallet seed phrase |
+| `L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT` | Yes | — | Block-commitment wallet seed phrase |
+| `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX` | Yes | — | Merge-transaction wallet seed phrase |
+| `PORT` | No | `3000` | HTTP RPC port the node listens on |
+| `NODE_ROLE` | No | `all` | Node role: `all`, `api`, `tx-processor`, or `sequencer` |
+| `REDIS_URL` | No | `redis://redis:6379` | Redis connection URL |
+| `PROM_METRICS_PORT` | No | `9464` | Prometheus metrics exporter port |
+| `OLTP_EXPORTER_URL` | No | `http://0.0.0.0:4318/v1/traces` | OpenTelemetry trace exporter URL |
+
+## PostgreSQL Connection
+
+The node uses two separate PostgreSQL connection pools — one for HTTP query traffic and one for sequencer-critical operations — both backed by the same database credentials.
+
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=midgard
+POSTGRES_HOST=postgres       # Use "postgres" inside Docker, "localhost" outside
+```
+
+When running outside Docker, set `POSTGRES_HOST=localhost`. Docker Compose publishes PostgreSQL on host port `5433` (container port `5432`).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTGRES_USER` | `postgres` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | `postgres` | PostgreSQL password |
+| `POSTGRES_DB` | `midgard` | Database name |
+| `POSTGRES_HOST` | `postgres` | Hostname (use `localhost` outside Docker) |
+
+## Node Role
+
+Use `NODE_ROLE` to control which responsibilities the process takes on. In a single-server deployment, leave it as `all`. In a distributed setup, deploy each role separately and point them all at the same Redis and PostgreSQL instances.
+
+```env
+NODE_ROLE=all          # All roles in one process (default)
+NODE_ROLE=api          # HTTP ingress only — enqueues to Redis
+NODE_ROLE=tx-processor # Mempool ingestion only — reads from Redis
+NODE_ROLE=sequencer    # Block production and L1 sync only
+```
+
+The `api` role exposes the HTTP port (`PORT`). The `tx-processor` and `sequencer` roles do not expose an HTTP port but each export their own Prometheus metrics on configurable ports.
+
+## Timing Parameters
+
+These variables control the intervals at which the node's background fibers run. The defaults are tuned for testnet. For mainnet, adjust based on your observed block times and L1 confirmation latency.
+
+| Variable | Default | Unit | Description |
+|----------|---------|------|-------------|
+| `WAIT_BETWEEN_BLOCK_COMMITMENTS` | `500` | ms | Delay between block-commitment fiber runs |
+| `WAIT_BETWEEN_BLOCK_SUBMISSIONS` | `1000` | ms | Delay between block-submission fiber runs |
+| `WAIT_BETWEEN_USER_EVENT_FETCHES` | `11000` | ms | Interval for polling L1 deposits and withdrawals |
+| `WAIT_BETWEEN_MERGE_TXS` | `10000` | ms | Delay between state-queue merge fiber runs |
+
+<Info>
+  `WAIT_BETWEEN_BLOCK_COMMITMENTS` controls how frequently the sequencer tries to build a new block from the mempool. Lower values mean more frequent (and smaller) blocks; higher values let the mempool fill for larger, more efficient batches.
+</Info>
+
+## Block Commitment Limits
+
+These variables let you tune how the sequencer batches transactions into blocks:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COMMITMENT_MAX_TX_REQUESTS_PER_BLOCK` | `2000` | Maximum transaction requests included in a single block |
+| `COMMITMENT_MIN_TX_REQUESTS_PER_BLOCK` | `1` | Minimum transactions before the sequencer forces a commitment |
+| `COMMITMENT_MAX_WAIT_MS` | `0` | Maximum time to wait for the minimum batch size before committing anyway (`0` = commit immediately) |
+| `COMMITMENT_WORKER_TIMEOUT_MS` | `300000` | Timeout for the commitment worker thread (5 minutes) |
+
+## Transaction Queue (Redis)
+
+The node uses Redis Streams to decouple transaction receipt from mempool processing. These variables configure the stream behavior:
+
+```env
+REDIS_URL=redis://redis:6379
+REDIS_STREAM_KEY=midgard:tx-submissions
+REDIS_STREAM_CONSUMER_GROUP=midgard-tx-processors
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_URL` | `redis://redis:6379` | Redis connection URL |
+| `REDIS_STREAM_KEY` | `midgard:tx-submissions` | Stream name for submitted transactions |
+| `TX_QUEUE_DRAIN_BATCH_SIZE` | `100` | Number of messages the processor claims per batch |
+| `TX_QUEUE_PROCESSOR_INTERVAL_MS` | `250` | Polling interval for the drain loop |
+| `TX_PARSE_CONCURRENCY` | `8` | Parallel workers for deserializing transactions |
+| `TX_QUEUE_MAX_DELIVERY_ATTEMPTS` | `5` | Attempts before moving a message to the dead-letter stream |
+
+## Monitoring and Observability
+
+Monitoring is activated by starting the node with the `--with-monitoring` flag. The Docker Compose `monolith` profile passes this flag automatically.
+
+```env
+PROM_METRICS_PORT=9464
+OLTP_EXPORTER_URL=http://tempo:4318/v1/traces
+```
+
+<Note>
+  The trace exporter variable is spelled `OLTP_EXPORTER_URL` (not `OTLP`) in the current implementation. This matches the variable name in `.env.example` and the config loader in `config.ts`.
+</Note>
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PROM_METRICS_PORT` | `9464` | Port for the Prometheus `/metrics` scrape endpoint |
+| `OLTP_EXPORTER_URL` | `http://0.0.0.0:4318/v1/traces` | OTLP HTTP endpoint for trace export |
+
+When running the split-role deployment, each role can expose its own metrics port:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NODE_TX_PROCESSOR_PROM_HOST_PORT` | `9466` | Host-side metrics port for the tx-processor container |
+| `NODE_SEQUENCER_PROM_HOST_PORT` | `9467` | Host-side metrics port for the sequencer container |
+
+## Manager Configuration File
+
+The `midgard` CLI reads its settings from a JSON file rather than environment variables. The default configuration lives at `demo/midgard-manager/config/settings.json`:
+
+```json
+{
+  "node": {
+    "endpoint": "http://localhost:3000"
+  },
+  "generator": {
+    "enabled": false,
+    "maxConcurrent": 10,
+    "batchSize": 100,
+    "intervalMs": 1000
+  },
+  "logging": {
+    "level": "info",
+    "format": "pretty"
+  }
+}
+```
+
+Update `node.endpoint` to point at a remote node, or pass `--endpoint` on the CLI to override it for a single command. The `generator` block controls the built-in test transaction generator (disabled by default).
+
+## Full `.env` Example
+
+Here is a minimal working `.env` for a testnet operator using Blockfrost:
+
+```env
+# Network
+NETWORK=Preprod
+
+# L1 Provider — Blockfrost
+L1_PROVIDER=Blockfrost
+L1_BLOCKFROST_API_URL=https://cardano-preprod.blockfrost.io/api/v0
+L1_BLOCKFROST_KEY=preprodYOUR_KEY_HERE
+
+# Keep these present even when using Blockfrost
+L1_OGMIOS_KEY=
+L1_KUPO_KEY=
+
+# Operator wallets (use three distinct seed phrases)
+L1_OPERATOR_SEED_PHRASE="your twenty four word seed phrase here ..."
+L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT="your twenty four word seed phrase here ..."
+L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX="your twenty four word seed phrase here ..."
+
+# Node
+PORT=3000
+NODE_ROLE=all
+
+# Redis
+REDIS_URL=redis://redis:6379
+
+# PostgreSQL
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=midgard
+POSTGRES_HOST=postgres
+
+# Monitoring
+PROM_METRICS_PORT=9464
+OLTP_EXPORTER_URL=http://tempo:4318/v1/traces
+```
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Layer Node Deployment" icon="server" href="/operators/layer-node">
+    Step-by-step guide to deploying the node with Docker Compose or Nix, including the full observability stack.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/operators/cli-reference">
+    Use the `midgard` CLI to manage wallets, submit transactions, and inspect node status.
+  </Card>
+</CardGroup>

@@ -1,0 +1,126 @@
+---
+title: "Alchemy: FIRE and ICE Bitcoin Reserve Assets"
+sidebarTitle: "Alchemy"
+description: "Alchemy creates two Bitcoin-backed reserve assets — FIRE (high-beta BTC growth exposure) and ICE (senior BTC-backed USD-denominated claim) — built on the Charms zkVM protocol."
+---
+
+Alchemy is Sundial's Bitcoin reserve infrastructure layer. It takes a pool of BTC held in Sundial's audited Bitcoin lockers and creates two distinct, complementary assets — **FIRE** and **ICE** — from that single reserve. Every minting and redemption operation is governed by a Groth16 zk-SNARK proof verified on-chain: the reserve constraints are enforced by cryptography, not by promises. Neither asset requires bridging, wrapping, or custodians beyond what Bitcoin itself provides.
+
+## The Reserve Structure
+
+Alchemy works by pooling BTC collateral and splitting the economic exposure into two tranches. The same reserve backs both assets simultaneously.
+
+- **ICE holders** have a senior claim on the reserve. When Bitcoin's price falls, ICE is protected first.
+- **FIRE holders** have a junior claim. They absorb downside before ICE holders are affected, but they also capture amplified upside when Bitcoin appreciates.
+
+The reserve ratio — the value of pooled BTC relative to outstanding ICE liabilities — governs when each asset can be minted or redeemed. The protocol enforces these thresholds on-chain via ZK proof, so no human operator can bypass them.
+
+## FIRE and ICE Compared
+
+<Tabs>
+  <Tab title="🔥 FIRE (BTC+)">
+    FIRE is the junior reserve-growth asset. It is designed for investors who want amplified exposure to Bitcoin price appreciation and are comfortable absorbing downside volatility first.
+
+    **Formula:** `FIRE = (V · P − L) / N_fire`
+
+    Where `V` is the vault BTC volume, `P` is the Bitcoin price, `L` is the total ICE liability, and `N_fire` is the number of outstanding FIRE tokens.
+
+    | Property | Value |
+    |---|---|
+    | Claim priority | Junior — absorbs volatility first |
+    | Price exposure | Higher-beta BTC appreciation |
+    | Liquidation risk | None — no margin calls |
+    | Redemption threshold | Reserve ratio above 4.0× |
+    | Minting threshold | Reserve ratio above 4.0× |
+
+    FIRE holders benefit when BTC appreciates because the reserve surplus — after ICE liabilities are fully covered — flows entirely to FIRE. In a declining market, FIRE's value contracts before ICE holders are affected.
+  </Tab>
+  <Tab title="🧊 ICE (BTC−)">
+    ICE is the senior BTC-backed claim. It is designed for investors who want USD-denominated exposure to Bitcoin-backed yield with lower volatility — stability-seeking participants in the reserve structure.
+
+    **Formula:** `r = (V · P) / L`
+
+    Where `r` is the reserve ratio, `V · P` is the USD value of pooled BTC, and `L` is the total ICE liability.
+
+    | Property | Value |
+    |---|---|
+    | Claim priority | Senior — protected from downside first |
+    | Price denomination | USD-denominated |
+    | Volatility profile | Lower — protected by reserve buffer |
+    | Redemption threshold | Reserve ratio above 2.0× |
+    | Minting threshold | Reserve ratio above 4.0× |
+
+    ICE is not a short position on Bitcoin. It is the **senior claim in the reserve**: if BTC falls significantly, ICE holders are covered first from the remaining collateral. The reserve ratio must stay above 2.0× for redemptions, providing a substantial buffer before ICE is at risk.
+  </Tab>
+</Tabs>
+
+<Note>
+  ICE is not a short on Bitcoin. It is the senior tranche of a Bitcoin-collateralized reserve. If you want stable, USD-denominated exposure backed by BTC, ICE is designed for you. If you want amplified BTC growth, FIRE is the junior tranche that captures that upside.
+</Note>
+
+## How Reserve Constraints Are Enforced
+
+Alchemy's reserve rules are not enforced by an admin key or a governance vote — they are enforced by the Charms zkVM protocol. Here is the enforcement chain:
+
+<Steps>
+  <Step title="Reserve rules encoded as Charms app contracts">
+    The minting and redemption logic for FIRE and ICE is written as Rust functions compiled to a zero-knowledge virtual machine. The contract checks conditions like: Is the reserve ratio above 4.0× before minting ICE? Is the reserve zone allowing FIRE redemption? These rules cannot be bypassed — they are part of the proof statement.
+  </Step>
+  <Step title="Off-chain prover generates a Groth16 proof">
+    When you want to mint or redeem, the Charms prover runs the app contract off-chain and generates a compact Groth16 zk-SNARK proof attesting that all reserve constraints were satisfied. This proof is embedded in the transaction spell.
+  </Step>
+  <Step title="On-chain validator verifies the proof">
+    The `staking_groth16` Plutus v3 validator on Cardano verifies the Groth16 proof using BLS12-381 pairings as native builtins. If the proof is invalid — meaning the reserve constraints were not satisfied — the transaction is rejected at the ledger level.
+  </Step>
+  <Step title="Native tokens are minted or burned">
+    Only after the proof passes does the ledger mint FIRE or ICE as native Cardano tokens. These tokens are then fully compatible with every wallet, DEX, and application on Cardano from the moment of minting.
+  </Step>
+</Steps>
+
+## Technical Stack
+
+Alchemy is built on three layers that work together:
+
+<CardGroup cols={3}>
+  <Card title="Bitcoin" icon="bitcoin">
+    Sundial's audited BTC lockers hold the shared vault collateral on Bitcoin's base layer. No custodian. No bridge trust assumption beyond Bitcoin's UTXO security model.
+  </Card>
+  <Card title="Charms Protocol" icon="code">
+    FIRE and ICE app contracts written in Rust define every minting, burning, and redemption rule. Each spell carries a Groth16 proof that reserve constraints were satisfied before state changes occur.
+  </Card>
+  <Card title="Charms Validators on Cardano" icon="shield">
+    The `main` routing contract and `staking_groth16` validator verify ZK proofs trustlessly on Cardano via BLS12-381 pairings. Beacon tokens make validators discoverable on-chain.
+  </Card>
+</CardGroup>
+
+## Reserve Scenario Simulator
+
+You can explore how FIRE and ICE respond to different BTC prices and reserve ratios using the interactive visualizer at [sundialprotocol.com/alchemy/visualizer](https://sundialprotocol.com/alchemy/visualizer). Move the sliders to see how reserve ratios shift, when redemption thresholds are crossed, and how FIRE value responds to price changes at different collateralization levels.
+
+<Tip>
+  Use the visualizer before minting to understand the current reserve zone. Minting FIRE or ICE when the reserve ratio is near the 4.0× threshold means you are entering a tighter system — study how a 20% BTC price drop affects your position before committing.
+</Tip>
+
+## Market Precedent
+
+FIRE and ICE are not novel in concept — they follow a category of Bitcoin reserve and yield products with established demand. [sundialprotocol.com/alchemy/market-precedent](https://sundialprotocol.com/alchemy/market-precedent) covers how STRC, Pendle, Djed, and Ethena validated demand for this product category and how Alchemy differentiates from each.
+
+## Frequently Asked Questions
+
+Common questions about FIRE and ICE — including how redemptions work, what happens in a black-swan price crash, and how the reserve ratio is measured — are answered at [sundialprotocol.com/alchemy/faq](https://sundialprotocol.com/alchemy/faq).
+
+<Accordion title="Can FIRE go to zero?">
+  In theory, yes. If the BTC price falls sharply enough that `V · P ≤ L` — the reserve's USD value equals or drops below total ICE liabilities — then FIRE's formula produces zero or a negative value. In practice, FIRE redemptions are suspended below a 4.0× reserve ratio, which provides a wide buffer before this scenario is reached. ICE redemptions remain available down to 2.0×.
+</Accordion>
+
+<Accordion title="Is ICE a stablecoin?">
+  ICE is a **USD-denominated senior claim on a BTC reserve**, not a fiat-backed or algorithmic stablecoin. Its value is formulaically derived from the reserve ratio and BTC price. If the reserve ratio falls below 2.0×, ICE redemptions halt. ICE is not pegged; it is a structured product with defined priority in the reserve.
+</Accordion>
+
+<Accordion title="Who holds the BTC collateral?">
+  The BTC collateral is held in Sundial's Hacken-audited BTC lockers directly on Bitcoin. These are Bitcoin-native P2WSH scripts — not a custodial service, not a bridge. The locker scripts enforce timelock and escrow rules at the Bitcoin protocol level. See [BTC Staking](/components/btc-staking) for the full script mechanics.
+</Accordion>
+
+<Accordion title="How are FIRE and ICE related to the Charms bridge?">
+  FIRE and ICE are created as Charms tokens and beamed to Cardano using the Charms Groth16 bridge. The BTC stays on Bitcoin; the token logic and reserve constraints are enforced on Cardano by the `staking_groth16` validator. Once on Cardano, FIRE and ICE are standard Cardano Native Tokens compatible with any wallet or DEX. See [Charms Bridge](/components/charms-bridge) for how beaming works.
+</Accordion>

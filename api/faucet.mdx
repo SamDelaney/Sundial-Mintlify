@@ -1,0 +1,209 @@
+---
+title: "Faucet API: Claim Testnet sBTC Programmatically"
+sidebarTitle: "Faucet API"
+description: "POST /faucet/claims sends testnet sBTC to a Cardano preprod address. Accepts a bech32 address and returns a transaction ID. Includes structured error responses."
+---
+
+The faucet API lets you claim testnet sBTC programmatically, making it straightforward to fund addresses in automated test suites, CI pipelines, and integration scripts without visiting the web UI. Supply a Cardano preprod address, and the faucet submits an on-chain transaction to fund it. All tokens dispensed by the faucet are testnet-only and carry no real-world value.
+
+<Warning>
+  The faucet is a testnet-only service. Claims are subject to per-address and per-IP cooldowns to prevent abuse. Do not rely on the faucet for high-frequency automated funding — pre-fund a set of test wallets at the start of a test run instead.
+</Warning>
+
+---
+
+## POST /faucet/claims — Claim Testnet sBTC
+
+Submit a claim request for testnet sBTC. The faucet validates the address, checks cooldown and IP limits, builds a funding transaction, and returns the transaction hash once the transaction is submitted to Cardano preprod.
+
+### Request Body
+
+```json
+{
+  "address": "addr_test1qp...",
+  "idempotencyKey": "my-test-run-001",
+  "ipHash": "<server-generated>"
+}
+```
+
+<ParamField body="address" type="string" required>
+  Bech32 Cardano testnet address to receive the sBTC. Must start with `addr_test1`, must carry a valid payment credential, must not be a script address, and must be a preprod (testnet) network address.
+</ParamField>
+
+<ParamField body="idempotencyKey" type="string" required>
+  A unique string identifying this claim request. Resending the same `idempotencyKey` for the same address is safe — the faucet returns the original result rather than triggering a second transaction. Use a value that is stable across retries, such as a test run ID or a UUID generated at the start of your pipeline.
+</ParamField>
+
+<ParamField body="ipHash" type="string">
+  A hashed representation of the requester's IP address, used for per-IP rate limiting. This field is handled server-side when you go through the web frontend proxy. When calling the API directly, include an empty string or omit the field — the server-side proxy at `sundialprotocol.com` populates it automatically.
+</ParamField>
+
+### Example
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://rpc.testnet.sundialprotocol.com/faucet/claims \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "addr_test1qp...",
+    "idempotencyKey": "my-test-run-001"
+  }'
+```
+
+```typescript TypeScript
+const response = await fetch(
+  "https://rpc.testnet.sundialprotocol.com/faucet/claims",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      address: "addr_test1qp...",
+      idempotencyKey: `test-run-${Date.now()}`,
+    }),
+  }
+);
+
+if (!response.ok) {
+  const { error, code } = await response.json();
+  console.error(`Faucet claim failed [${code}]: ${error}`);
+} else {
+  const { claimId, txHash, amount, nextEligibleAt } = await response.json();
+  console.log(`Funded! txHash=${txHash}, amount=${amount} lovelace`);
+  console.log(`Next claim eligible at: ${nextEligibleAt}`);
+}
+```
+
+</CodeGroup>
+
+### Success Response
+
+```json
+{
+  "claimId": "3f2a1b4c-5d6e-7f8a-9b0c-1d2e3f4a5b6c",
+  "txHash": "9e4f3a2b1c0d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f",
+  "amount": "10000000",
+  "nextEligibleAt": "2025-01-15T14:30:00.000Z"
+}
+```
+
+<ResponseField name="claimId" type="string">
+  UUID uniquely identifying this claim record. Use this for support requests if a claim fails to arrive.
+</ResponseField>
+
+<ResponseField name="txHash" type="string">
+  Hex-encoded Cardano preprod transaction hash of the funding transaction. Look this up on a preprod block explorer to confirm the transfer.
+</ResponseField>
+
+<ResponseField name="amount" type="string">
+  Lovelace amount dispensed, returned as a string to preserve full integer precision.
+</ResponseField>
+
+<ResponseField name="nextEligibleAt" type="string">
+  ISO 8601 timestamp indicating when this address becomes eligible for another claim. Store this value to avoid unnecessary cooldown errors in subsequent requests.
+</ResponseField>
+
+---
+
+## Error Responses
+
+The faucet returns structured error objects with a stable `code` field alongside a human-readable `error` string. Handle these by `code` rather than by HTTP status or message text.
+
+| `code` | HTTP Status | Description |
+|--------|-------------|-------------|
+| `DISABLED` | 404 | The faucet is not enabled on this node. The response is deliberately indistinguishable from a missing route. |
+| `ADDRESS_INVALID` | 400 | The `address` field failed to parse as a valid bech32 address. |
+| `ADDRESS_NETWORK_MISMATCH` | 400 | The address is valid but belongs to the wrong network (e.g. a mainnet address on a preprod faucet). |
+| `ADDRESS_NO_PAYMENT_CREDENTIAL` | 400 | The address has no payment credential (e.g. a bare stake address). |
+| `ADDRESS_SCRIPT` | 400 | The address is a script address — the faucet only funds wallet addresses. |
+| `COOLDOWN` | 429 | This address claimed too recently. The response body includes `nextEligibleAt`. |
+| `IP_LIMIT` | 429 | The daily per-IP claim cap has been reached. Try again tomorrow or use a different network path. |
+| `DEPLETED` | 503 | The faucet wallet has insufficient funds. This is a temporary condition — check back later or use the [web UI](https://sundialprotocol.com/testnet/faucet) for status. |
+| `VALIDATION_FAILED` | 500 | The funding transaction failed to validate on-chain. This is a transient server-side error — retry after a brief delay. |
+| `INTERNAL` | 500 | An unexpected internal error occurred. |
+
+### Error Response Shape
+
+```json
+{
+  "error": "Human-readable description",
+  "code": "COOLDOWN",
+  "nextEligibleAt": "2025-01-15T14:30:00.000Z"
+}
+```
+
+The `nextEligibleAt` field is only present for `COOLDOWN` responses.
+
+### Error Handling Example
+
+```typescript
+async function claimFaucet(address: string, runId: string): Promise<void> {
+  const res = await fetch(
+    "https://rpc.testnet.sundialprotocol.com/faucet/claims",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, idempotencyKey: runId }),
+    }
+  );
+
+  if (res.ok) {
+    const { txHash, amount } = await res.json();
+    console.log(`Claimed ${amount} lovelace → ${txHash}`);
+    return;
+  }
+
+  const { code, error, nextEligibleAt } = await res.json();
+
+  switch (code) {
+    case "COOLDOWN":
+      console.warn(`Address on cooldown until ${nextEligibleAt}`);
+      break;
+    case "IP_LIMIT":
+      console.warn("Daily IP limit reached — try again tomorrow");
+      break;
+    case "DEPLETED":
+      console.warn("Faucet temporarily empty — check sundialprotocol.com/testnet/faucet");
+      break;
+    case "ADDRESS_NETWORK_MISMATCH":
+      throw new Error(`Wrong network — use an addr_test1 address for testnet`);
+    default:
+      throw new Error(`Faucet error [${code}]: ${error}`);
+  }
+}
+```
+
+---
+
+## Idempotency and Retry Behaviour
+
+Using a stable `idempotencyKey` makes the faucet safe to call multiple times in retry loops without risk of double-funding:
+
+<Steps>
+  <Step title="Generate a stable key">
+    Create an idempotency key that is unique to this logical claim but stable across retries. A test run ID, a UUID generated once at startup, or a hash of `address + testRunId` all work well.
+  </Step>
+  <Step title="Call the faucet">
+    POST the claim. On a `200` response, store `nextEligibleAt` and proceed with your test.
+  </Step>
+  <Step title="Retry on transient failures">
+    On `VALIDATION_FAILED` or `INTERNAL` errors, retry with the **same** `idempotencyKey`. The faucet deduplicates by key, so even if the first attempt partially succeeded, the retry will either return the original result or trigger a fresh transaction safely.
+  </Step>
+  <Step title="Respect cooldown signals">
+    On a `COOLDOWN` response, wait until `nextEligibleAt` before retrying. On `IP_LIMIT`, avoid retrying from the same IP for 24 hours.
+  </Step>
+</Steps>
+
+---
+
+## Web UI Alternative
+
+If you prefer to claim tokens manually rather than programmatically, use the testnet faucet web interface at:
+
+**[https://sundialprotocol.com/testnet/faucet](https://sundialprotocol.com/testnet/faucet)**
+
+The web UI provides the same tokens as the API and shows your current cooldown status and estimated next eligible claim time.
+
+<Info>
+  The faucet dispenses testnet sBTC (simulated BTC) on the Cardano preprod network. These tokens are used for testing Sundial L2 transactions and the BTC staking flow. They have no monetary value and cannot be transferred to mainnet.
+</Info>

@@ -1,0 +1,368 @@
+---
+title: "Midgard TypeScript Types: Blocks, Transactions & Validation"
+sidebarTitle: "Midgard Types"
+description: "TypeScript types and validation for Sundial L2. Covers blocks, transactions, user events, binary codec, and Phase A and B validation pipelines."
+---
+
+`midgard-ts` is the TypeScript types and binary codec package for the Sundial L2 data model. It gives you precise TypeScript interfaces for every on-chain structure — blocks, transactions, deposit events, withdrawal events — along with encode/decode functions that round-trip those structures through Sundial's custom static/dynamic binary format. It also ships Phase A (stateless) and Phase B (stateful) validation pipelines, the same ones the Sundial node's mempool processor uses. Version **0.1.0** lives in the `demo/midgard-ts` folder of the `sundial-monorepo` workspace and is published as the workspace package `midgard-ts`.
+
+<Note>
+  `midgard-ts` is a pure TypeScript package. Its only runtime dependency is `@dcspark/cardano-multiplatform-lib-nodejs` for Cardano address parsing and signature verification in the validation modules.
+</Note>
+
+## Installation
+
+`midgard-ts` is a workspace package — add it as a local dependency from inside the `sundial-monorepo` workspace:
+
+```json
+{
+  "dependencies": {
+    "midgard-ts": "workspace:*"
+  }
+}
+```
+
+Build the package before first use:
+
+```bash
+cd demo/midgard-ts
+pnpm install
+pnpm build
+```
+
+## Type Modules
+
+### `types/block` — Block and Header
+
+A Sundial L2 `Block` comprises a 28-byte header hash, a `Header` with Merkle roots for each dataset, and a `BlockBody` containing four maps: UTxOs, transactions, deposits, and withdrawals.
+
+```typescript
+import {
+  Block,
+  BlockBody,
+  Header,
+  encodeBlock,
+  decodeBlock,
+  encodeBlockBody,
+  decodeBlockBody,
+  encodeHeader,
+  decodeHeader,
+} from 'midgard-ts';
+
+// Header holds all five Merkle roots plus timing and operator info
+const header: Header = {
+  prev_utxos_root:     new Uint8Array(32), // MPT root of previous UTxO set
+  utxos_root:          new Uint8Array(32), // MPT root of current UTxO set
+  transactions_root:   new Uint8Array(32), // MPT root of transactions
+  deposits_root:       new Uint8Array(32), // MPT root of deposit events
+  withdrawals_root:    new Uint8Array(32), // MPT root of withdrawal events
+  start_time:          1700000000,         // Block start (POSIX ms)
+  event_start_time:    1700000000,         // User-event window start
+  end_time:            1700020000,         // Block end (POSIX ms)
+  prev_header_hash:    undefined,          // undefined for genesis block
+  operator_vkey:       new Uint8Array(32), // Operator ed25519 verification key
+  protocol_version:    1,
+};
+
+// BlockBody holds the four maps
+const blockBody: BlockBody = {
+  utxos:        [],  // Array<[OutputReference, TransactionOutput]>
+  transactions: [],  // Array<[TransactionId, Transaction]>
+  deposits:     [],  // Array<[OutputReference, DepositInfo]>
+  withdrawals:  [],  // Array<[OutputReference, WithdrawalInfo]>
+};
+
+const block: Block = {
+  header_hash: new Uint8Array(28),
+  header,
+  block_body: blockBody,
+};
+
+// Encode to binary (static section followed by dynamic section)
+const encoded: Uint8Array = encodeBlock(block);
+
+// Decode back
+const decoded: Block = decodeBlock(encoded);
+```
+
+### `types/transaction` — Transactions
+
+Each L2 `Transaction` carries a full `TransactionBody` (inputs, outputs, fee, and optional fields controlled by a bitmask) and a `TransactionWitnessSet`. A `TransactionCompact` replaces the full body and witness set with their hashes — used inside block headers and fraud proofs.
+
+```typescript
+import {
+  Transaction,
+  TransactionBody,
+  TransactionCompact,
+  TransactionWitnessSet,
+  encodeTransaction,
+  decodeTransaction,
+  encodeTransactionCompact,
+  decodeTransactionCompact,
+} from 'midgard-ts';
+
+const witnessSet: TransactionWitnessSet = {
+  vkey_witnesses:    [{ vkey: new Uint8Array(32), signature: new Uint8Array(64) }],
+  native_scripts:    undefined,
+  redeemers:         undefined,
+  plutus_v3_scripts: undefined,
+};
+
+const tx: Transaction = {
+  body: {
+    inputs:  [{ tx_id: new Uint8Array(32), index: 0 }],
+    outputs: [{ address: new Uint8Array(57), value: { coin: 2_000_000n }, datum: undefined, script_ref: undefined }],
+    fee:     170_000n,
+    ttl:     undefined,
+    auxiliary_data_hash:      undefined,
+    validity_interval_start:  undefined,
+    mint:                     undefined,
+    script_data_hash:         undefined,
+    required_signers:         undefined,
+    network_id:               1,           // 0 = testnet, 1 = mainnet
+    reference_inputs:         undefined,
+    required_observers:       undefined,
+  },
+  witness_set: witnessSet,
+  is_valid:    true,
+};
+
+const bytes = encodeTransaction(tx);
+const restored = decodeTransaction(bytes);
+```
+
+### `types/events` — Deposit and Withdrawal Events
+
+`DepositInfo` and `WithdrawalInfo` are the payload types for L2 user events. Both have full representations (raw bytes) and compact representations (hashed) used in block headers.
+
+```typescript
+import {
+  DepositInfo,
+  WithdrawalInfo,
+  DepositInfoCompact,
+  WithdrawalInfoCompact,
+  encodeDepositInfo,
+  decodeDepositInfo,
+  encodeWithdrawalInfo,
+  decodeWithdrawalInfo,
+} from 'midgard-ts';
+
+// A deposit targets an L2 address and optionally carries inline datum bytes
+const deposit: DepositInfo = {
+  l2_address: new Uint8Array([/* bech32-decoded address bytes */]),
+  l2_datum:   undefined,
+};
+
+// A withdrawal references the L2 UTxO being spent and the L1 destination
+const withdrawal: WithdrawalInfo = {
+  l2_outref: { tx_id: new Uint8Array(32), index: 0 }, // UTxO to burn on L2
+  l1_address: new Uint8Array([/* L1 destination address bytes */]),
+  l1_datum:   undefined,
+};
+
+const depositBytes    = encodeDepositInfo(deposit);
+const withdrawalBytes = encodeWithdrawalInfo(withdrawal);
+```
+
+## Validation Modules
+
+### Phase A — Stateless Validation
+
+Phase A validates each transaction independently against its own structure. No UTxO state is required. All checks are synchronous and safe to run in parallel. It enforces the following rules:
+
+<Accordion title="Phase A rule set">
+  | Rule | Description |
+  |---|---|
+  | R2 | Transaction hash integrity — computed body hash must match declared txId |
+  | R3 | Unsupported fields absent — no `redeemers`, `plutus_v3_scripts`, or `script_data_hash` |
+  | R4 | At least one spend input |
+  | R5 | No duplicate inputs within a single transaction |
+  | R6 | Output structure valid — non-negative coin, no overflow |
+  | R9 | Validity interval well-formed — `validity_interval_start` ≤ `ttl` |
+  | R11 | Minimum fee — measured against the CBOR-encoded transaction size |
+  | R13 | Required signers have corresponding vkey witnesses |
+  | R14 | vkey witness signatures verify against the transaction body hash |
+  | R15 | Native scripts present and valid against the validity interval |
+  | R19 | `is_valid` must be `true` |
+  | R20 | No auxiliary data hash |
+  | R23 | No minting |
+  | R24 | `network_id` matches the configured network when present |
+</Accordion>
+
+```typescript
+import { runPhaseAValidation } from 'midgard-ts';
+import type { QueuedTx, PhaseAConfig } from 'midgard-ts';
+
+const config: PhaseAConfig = {
+  minFeeA:          44,         // Cardano protocol parameter (lovelace per byte)
+  minFeeB:          155_381n,   // Cardano protocol parameter (constant lovelace)
+  expectedNetworkId: 0,         // 0 = testnet, 1 = mainnet
+  cardanoNetwork:   0,
+};
+
+// QueuedTx wraps a decoded Transaction with its txId and arrival sequence number
+const queuedTxs: QueuedTx[] = [
+  { txId: computedTxId, tx: decodedTx, arrivalSeq: 1n },
+];
+
+const { accepted, rejected } = runPhaseAValidation(queuedTxs, config);
+
+for (const r of rejected) {
+  console.warn('Rejected:', Buffer.from(r.txId).toString('hex'), r.code, r.detail);
+}
+```
+
+### Phase B — Stateful Validation
+
+Phase B validates Phase-A-accepted candidates against the current UTxO set. It builds a dependency graph, detects cycles, and processes transactions in topological waves with conflict-bucket parallelism. It enforces:
+
+<Accordion title="Phase B rule set">
+  | Rule | Description |
+  |---|---|
+  | R7 | Every spend input exists in the UTxO state or is produced by an earlier accepted tx in the same batch |
+  | R8 | No double-spend across accepted transactions |
+  | R8b | Every reference input exists in UTxO state and is not spent by the same transaction |
+  | R10 | Validity interval is compatible with the current slot |
+  | R12 | Value preservation: Σ(inputs) − fee = Σ(outputs) |
+  | R16 | Input-witness consistency: pubkey inputs need vkey witnesses; script inputs need native script witnesses |
+  | R17 | No dependency cycles between transactions in the batch |
+  | R18 | Cascade-reject all descendants of any rejected transaction |
+</Accordion>
+
+```typescript
+import {
+  runPhaseAValidation,
+  runPhaseBValidation,
+  runPhaseBValidationWithPatch,
+  applyUTxOStatePatch,
+} from 'midgard-ts';
+import type { PhaseBConfig, UTxOState } from 'midgard-ts';
+
+// Phase A first
+const phaseAResult = runPhaseAValidation(queuedTxs, phaseAConfig);
+
+// Build a UTxO state map: outRefKey → TransactionOutput
+// Key format is "<txid-hex>:<output-index>", e.g. "aabb...00:0"
+const utxoState: UTxOState = new Map([
+  ['aabb...00:0', { address: senderAddressBytes, value: { coin: 10_000_000n }, datum: undefined, script_ref: undefined }],
+]);
+
+const phaseBConfig: PhaseBConfig = {
+  nowSlot: 50_000_000, // Current Cardano slot number
+};
+
+// runPhaseBValidation returns accepted/rejected lists
+const { accepted, rejected } = runPhaseBValidation(
+  phaseAResult.accepted,
+  utxoState,
+  phaseBConfig,
+);
+
+// runPhaseBValidationWithPatch additionally returns the UTxO state delta
+const { accepted: acc2, rejected: rej2, statePatch } = runPhaseBValidationWithPatch(
+  phaseAResult.accepted,
+  utxoState,
+  phaseBConfig,
+);
+
+// Apply the patch to advance your UTxO state
+applyUTxOStatePatch(utxoState, statePatch);
+```
+
+<Tip>
+  Use `runPhaseBValidationWithPatch` when building a block-commitment pipeline. The returned `statePatch` tells you exactly which UTxOs were spent and which were produced, so you can advance your ledger state in one pass.
+</Tip>
+
+### Block Inspection Utilities
+
+The `inspect` module provides a high-level validation helper for individual transactions supplied as Cardano CBOR hex. It decodes the CBOR, converts to the Midgard wire format, runs Phase A, and returns structural metadata alongside the validation result.
+
+```typescript
+import { inspectTransactionCbor } from 'midgard-ts';
+import type { InspectTransactionCborConfig } from 'midgard-ts';
+
+const config: InspectTransactionCborConfig = {
+  cborHex: '84a400818258...', // raw Cardano transaction CBOR hex
+  expectedTxIdHex: 'aabb...', // optional: verify computed hash matches
+  phaseAConfig: {
+    minFeeA: 44,
+    minFeeB: 155_381n,
+    expectedNetworkId: 0,
+    cardanoNetwork: 0,
+  },
+};
+
+const result = inspectTransactionCbor(config);
+
+console.log('Computed tx ID:', result.computedTxIdHex);
+console.log('CBOR size (bytes):', result.cborByteSize);
+console.log('Midgard binary size (bytes):', result.midgardByteSize);
+console.log('Validation:', result.validation.status);
+
+if (result.validation.status === 'rejected') {
+  console.warn('Reject code:', result.validation.rejectCode);
+  console.warn('Detail:', result.validation.detail);
+}
+
+if (result.shape) {
+  console.log('Inputs:', result.shape.inputCount);
+  console.log('Outputs:', result.shape.outputCount);
+  console.log('Has inline datum:', result.shape.hasInlineDatum);
+}
+```
+
+## Binary Codec
+
+`midgard-ts` uses a custom static/dynamic binary format for all on-chain structures. Each type exposes matching `encode*` and `decode*` functions.
+
+<Accordion title="Full codec function reference">
+
+  | Function | Description |
+  |---|---|
+  | `encodeBlock(block)` | Serialize a full block to bytes |
+  | `decodeBlock(bytes)` | Deserialize bytes to a Block |
+  | `encodeBlockBody(body)` | Serialize a BlockBody to bytes |
+  | `decodeBlockBody(bytes)` | Deserialize bytes to a BlockBody |
+  | `encodeHeader(header)` | Serialize a Header to bytes |
+  | `decodeHeader(bytes)` | Deserialize bytes to a Header |
+  | `encodeTransaction(tx)` | Serialize a full Transaction to bytes |
+  | `decodeTransaction(bytes)` | Deserialize bytes to a Transaction |
+  | `encodeTransactionCompact(tc)` | Serialize a TransactionCompact to bytes |
+  | `decodeTransactionCompact(bytes)` | Deserialize bytes to a TransactionCompact |
+  | `encodeTransactionBody(body)` | Serialize a TransactionBody to bytes |
+  | `decodeTransactionBody(bytes)` | Deserialize bytes to a TransactionBody |
+  | `encodeTransactionBodyCompact(body)` | Serialize a TransactionBodyCompact to bytes |
+  | `decodeTransactionBodyCompact(bytes)` | Deserialize bytes to a TransactionBodyCompact |
+  | `encodeDepositInfo(info)` | Serialize a DepositInfo to bytes |
+  | `decodeDepositInfo(bytes)` | Deserialize bytes to a DepositInfo |
+  | `encodeDepositInfoCompact(info)` | Serialize a DepositInfoCompact to bytes |
+  | `decodeDepositInfoCompact(bytes)` | Deserialize bytes to a DepositInfoCompact |
+  | `encodeWithdrawalInfo(info)` | Serialize a WithdrawalInfo to bytes |
+  | `decodeWithdrawalInfo(bytes)` | Deserialize bytes to a WithdrawalInfo |
+  | `encodeWithdrawalInfoCompact(info)` | Serialize a WithdrawalInfoCompact to bytes |
+  | `decodeWithdrawalInfoCompact(bytes)` | Deserialize bytes to a WithdrawalInfoCompact |
+
+</Accordion>
+
+<Note>
+  The `midgard-ts` binary format uses an 8-byte-aligned static/dynamic split — every field's fixed-size portion is written first, followed by variable-length data. This is distinct from standard Cardano CBOR encoding and is intentionally larger. Phase A's minimum-fee check uses the CBOR size, not the Midgard binary size, to match Cardano protocol parameters correctly.
+</Note>
+
+## Aiken Alignment
+
+`midgard-ts` types mirror the on-chain Aiken smart contract data structures from the `onchain/aiken/` source tree. When building off-chain tooling that constructs fraud proofs or state-queue operations, use `midgard-ts` to produce correctly shaped datums and redeemers that match the Plutus V3 validators.
+
+<Tip>
+  Use `midgard-ts` for building off-chain tooling that needs to validate L2 transactions before submission — for example, a custom Watcher node that checks blocks for double-spends before the challenge window closes.
+</Tip>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Midgard SDK" icon="code" href="/sdk/midgard-sdk">
+    The full transaction-building SDK for Sundial L2 — deposits, withdrawals, transaction orders, and fraud proofs on the Cardano settlement layer.
+  </Card>
+  <Card title="REST API Overview" icon="plug" href="/api/overview">
+    Submit transactions and query L2 state via the Sundial node's HTTP RPC API without the SDK.
+  </Card>
+</CardGroup>

@@ -1,0 +1,133 @@
+---
+title: "State Queue: How Block Commitments Work on L1"
+sidebarTitle: "State Queue"
+description: "The State Queue is a Cardano smart contract that stores Sundial L2 block headers as a linked list. Operators commit blocks, watchers challenge them, and valid blocks reach finality."
+---
+
+The State Queue is the on-chain backbone of Sundial's Layer 2. It is a Cardano smart contract that maintains a linked list of committed L2 block headers, ordered from oldest to newest. Operators submit new headers to the tail of the queue; confirmed headers at the head merge into the permanent **Confirmed State** UTxO. Between those two endpoints sits the maturity window — the period during which any network participant can inspect a block and submit a fraud proof if something is wrong.
+
+## What Goes Into the State Queue
+
+The State Queue stores **block headers only**, not block bodies. Full block data — transactions, UTxO sets, deposits, and withdrawals — is stored off-chain on the Data Availability (DA) layer. On-chain, each header is a compact, fixed-size structure derived from Merkle roots of the off-chain data:
+
+| Field | Description |
+|---|---|
+| `prev_utxos_root` | Merkle root of the UTxO set from the previous block |
+| `utxos_root` | Merkle root of this block's resulting UTxO set |
+| `transactions_root` | Merkle root of this block's transaction set |
+| `deposits_root` | Merkle root of this block's deposit events |
+| `withdrawals_root` | Merkle root of this block's withdrawal events |
+| `start_time` | POSIX timestamp of the block's validity interval start |
+| `end_time` | POSIX timestamp of the block's validity interval end |
+| `prev_header_hash` | Hash of the immediately preceding block header (Blake2b-224) |
+| `operator_vkey` | Verification key hash of the operator who produced this block |
+| `protocol_version` | Sundial protocol version used to produce this block |
+
+The header hash itself is a Blake2b-224 digest of the full header structure. Because each header commits to `prev_header_hash`, the queue forms a cryptographically linked chain: you cannot swap or reorder blocks without breaking every subsequent header hash.
+
+## The Three State Queue Operations
+
+<Tabs>
+  <Tab title="Commit">
+    An operator adds a new block header to the end of the queue.
+
+    To commit a block, an operator must be currently registered in the **Active Operator Registry** and scheduled to produce a block in the current VRF slot. The commit transaction:
+
+    - Mints a new block NFT token (named with the `MBLC` prefix followed by the header hash).
+    - Creates a new linked-list node UTxO carrying the header as its inline datum.
+    - Updates the previous tail node to point to the new block.
+
+    The block immediately enters the maturity window. It is not yet part of the confirmed state.
+  </Tab>
+  <Tab title="Merge">
+    When a block header has passed through the maturity window without a successful fraud proof, it becomes eligible to merge into the Confirmed State.
+
+    The Merge operation:
+
+    - Burns the block NFT.
+    - Removes the linked-list node from the queue.
+    - Updates the **Confirmed State** UTxO with the new `header_hash`, `utxo_root`, `start_time`, `end_time`, and `protocol_version`.
+
+    After merging, the block is final. Withdrawals from the L2 that were included in this block can now be processed on L1.
+  </Tab>
+  <Tab title="Remove">
+    If a watcher submits a successful fraud proof against a block, the block is removed from the queue and the operator is slashed.
+
+    The Remove operation:
+
+    - Burns the fraudulent block's NFT.
+    - Removes the fraudulent node from the linked list, relinking its predecessor to the node that followed it.
+    - Executes one of three slashing approaches depending on the operator's current registry status: slash an active operator, slash a retired operator, or record that the operator was already slashed.
+    - Transfers the operator's bond deposit to the fraud prover as a reward.
+
+    Any blocks committed *after* the fraudulent block that depended on it must also be removed before the queue is consistent again.
+  </Tab>
+</Tabs>
+
+## The Maturity Window
+
+Every committed block enters a maturity window before it can be finalized. During this period, Provers (watcher nodes) download the block body from the DA layer, replay the block's transactions against the prior UTxO set, and verify that every claim in the header is correct.
+
+<Info>
+  The maturity window is the security guarantee of the optimistic rollup. Sundial does not verify every block on L1 — it assumes blocks are valid and only intervenes when a watcher provides proof that something is wrong. A longer maturity window gives watchers more time to detect and challenge fraud; a shorter window reduces withdrawal latency.
+</Info>
+
+If no fraud proof is submitted before the window closes, the block merges into the confirmed state automatically. The system assumes correctness by default.
+
+## The Confirmed State
+
+The Confirmed State is a single UTxO on Cardano — identified by the `MIDGARD_CONFIRMED_STATE` asset name — that represents the finalized tip of the L2 chain. It stores:
+
+| Field | Description |
+|---|---|
+| `header_hash` | Hash of the most recently confirmed block header |
+| `prev_header_hash` | Hash of the block before the confirmed tip |
+| `utxo_root` | Merkle root of the confirmed UTxO set |
+| `start_time` / `end_time` | Timestamp range of the confirmed tip |
+| `protocol_version` | Protocol version at the confirmed tip |
+
+Withdrawals, the Settlement Queue, and cross-chain bridges all read from the Confirmed State to validate user claims. Because the `utxo_root` is a Merkle root of the full UTxO set, a user can prove ownership of an L2 UTxO by providing a Merkle inclusion proof against this root.
+
+## What Happens When a Block Is Removed
+
+When a fraud proof succeeds, the consequences are:
+
+<Steps>
+  <Step title="Operator bond is slashed">
+    The operator who committed the fraudulent block loses their entire bond deposit. The bond is transferred to the address of the watcher who submitted the fraud proof.
+  </Step>
+  <Step title="Fraudulent block is removed">
+    The block NFT is burned and the linked-list node is removed. If the fraudulent block had successor blocks that built on it, those blocks must also be removed — any chain built on an invalid root is invalid.
+  </Step>
+  <Step title="Queue resumes from the last valid block">
+    The State Queue reverts to its pre-fraud state. Operators can then recommit blocks starting from the last confirmed valid block.
+  </Step>
+</Steps>
+
+<Warning>
+  If you submitted an L2 transaction that was included in a fraudulent block that was subsequently removed, your transaction has not been processed. You will need to resubmit it once the queue resumes. Your L2 funds are not lost — the UTxO set reverts to the state before the fraudulent block.
+</Warning>
+
+## The Escape Hatch
+
+If the State Queue stops progressing — no new blocks are committed for an extended period — Sundial activates the **Escape Hatch**. This emergency mechanism allows you to exit the L2 directly, bypassing the normal withdrawal flow, by proving ownership of your L2 UTxOs against the last Confirmed State.
+
+The Escape Hatch exists to protect you even in scenarios where all operators are offline, the operator set is compromised, or the network halts for any reason. Your funds are never permanently locked in the L2.
+
+## Block Data and the DA Layer
+
+<Note>
+  Only block **headers** are stored in the State Queue on L1. Full block bodies — including all transactions, UTxO diffs, deposit events, and withdrawal events — are stored on the Data Availability layer. Archivists (a type of watcher node) replicate and serve this data. The on-chain headers are sufficient for fraud proofs because every claim in a block body is committed to by the Merkle roots in the header.
+</Note>
+
+Archivists expose a simple API for accessing historical block data:
+
+```
+GET /block/{blockHeight}          – Full block (header + body)
+GET /block/{blockHeight}/header   – Header only
+GET /block/{blockHeight}/body     – Body only
+GET /blocks?from={n}&to={m}       – Range of blocks
+GET /block/{blockHash}            – Block by hash
+```
+
+You do not need to run an Archivist to use Sundial — wallets and indexers handle DA access for you. If you want to run your own node for additional verifiability, see the [Watchers guide](/guides/watchers).

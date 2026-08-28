@@ -1,0 +1,115 @@
+---
+title: "Connect Your Wallet to Sundial Protocol"
+sidebarTitle: "Connect Wallet"
+description: "Step-by-step instructions for connecting a Cardano or Bitcoin wallet to the Sundial Protocol dashboard. Supports Eternl, Lace, Typhon, and Reown AppKit."
+---
+
+Sundial Protocol supports two categories of wallet depending on what you want to do. Use a **Cardano wallet** to interact with the Sundial Layer 2, stake ADA, and hold testnet sBTC. Use a **Bitcoin wallet** (via Reown AppKit) to stake BTC directly through the BTC Locker protocol. You can connect both wallet types at the same time from the same dashboard session.
+
+<Note>
+  If you are using the Sundial testnet, make sure your wallet is set to the **Preprod** (testnet) network before connecting. Connecting a mainnet wallet to the testnet dashboard will result in a network mismatch error.
+</Note>
+
+## Cardano Wallets
+
+Cardano wallets give you access to the Sundial Layer 2 (Midgard), ADA staking, and the testnet sBTC faucet. Sundial supports all wallets that implement the CIP-30 browser wallet standard.
+
+<CardGroup cols={3}>
+  <Card title="Eternl" icon="wallet" href="https://eternl.io/">
+    Recommended — easy network switching, widely used in the Cardano ecosystem.
+  </Card>
+  <Card title="Lace" icon="wallet" href="https://www.lace.io/">
+    Recommended — official IOG wallet with a clean, beginner-friendly UI.
+  </Card>
+  <Card title="Typhon" icon="wallet" href="https://typhonwallet.io/">
+    Feature-rich wallet with multi-asset support.
+  </Card>
+  <Card title="Yoroi" icon="wallet" href="https://yoroi-wallet.com/">
+    Lightweight wallet available as a browser extension and mobile app.
+  </Card>
+  <Card title="GeroWallet" icon="wallet" href="https://gerowallet.io/">
+    DeFi-focused wallet with built-in dApp browser.
+  </Card>
+  <Card title="NuFi" icon="wallet" href="https://nu.fi/">
+    Multi-chain wallet supporting Cardano, Ethereum, and Solana.
+  </Card>
+</CardGroup>
+
+<Steps>
+  <Step title="Install your wallet extension">
+    Download and install your preferred wallet from its official website. Create a new wallet or restore an existing one using your seed phrase. Store your seed phrase securely and never share it with anyone.
+  </Step>
+  <Step title="Switch to the testnet network (testnet only)">
+    Open your wallet extension and navigate to its **Settings** or network selector. Switch the network from **Mainnet** to **Testnet** or **Preprod**. Your address will change to start with `addr_test1` once you are on the correct network.
+
+    <Note>
+      Skip this step if you are connecting to the Sundial mainnet.
+    </Note>
+  </Step>
+  <Step title="Navigate to the Sundial dashboard">
+    Go to [sundialprotocol.com/dashboard](https://www.sundialprotocol.com/dashboard) in the same browser where your wallet extension is installed.
+  </Step>
+  <Step title="Click Connect Wallet">
+    Click the **Connect Wallet** button in the top-right corner of the dashboard. A modal appears listing all detected Cardano wallet extensions.
+  </Step>
+  <Step title="Select your wallet and approve">
+    Click your wallet's name in the list. Your wallet extension will open a permission prompt asking you to approve the connection to the Sundial dashboard. Click **Connect** or **Approve** to grant access. The dashboard updates to show your address and balance once the connection is established.
+  </Step>
+</Steps>
+
+## Bitcoin Wallets
+
+Bitcoin wallets are used for BTC staking through Sundial's BTC Locker protocol. Sundial connects to Bitcoin wallets via **Reown AppKit** (formerly WalletConnect), which works with any WalletConnect-compatible Bitcoin wallet.
+
+<Steps>
+  <Step title="Navigate to the Sundial dashboard">
+    Go to [sundialprotocol.com/dashboard](https://www.sundialprotocol.com/dashboard).
+  </Step>
+  <Step title="Open the Connect Wallet modal">
+    Click **Connect Wallet** in the top-right corner. If you already have a Cardano wallet connected, click **Add Wallet** or the Bitcoin wallet option in the same modal.
+  </Step>
+  <Step title="Select the Bitcoin option">
+    In the wallet selection modal, choose **Bitcoin** as the chain. This opens the Reown AppKit connection flow.
+  </Step>
+  <Step title="Connect via WalletConnect">
+    A QR code appears on screen. Open your Bitcoin wallet app on your mobile device and use its **WalletConnect** or **Scan** feature to scan the QR code. Alternatively, if your wallet supports WalletConnect on desktop, copy the connection URI and paste it into your wallet.
+
+    <Tip>
+      For testnet use, make sure your Bitcoin wallet is set to **testnet3** before scanning. Testnet Bitcoin addresses begin with `tb1q`.
+    </Tip>
+  </Step>
+  <Step title="Approve the connection in your wallet">
+    Your wallet will prompt you to approve the connection request from the Sundial dashboard. Confirm the approval. The dashboard now shows your Bitcoin address and BTC balance alongside your Cardano wallet.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Wallet not detected on the connection modal">
+    The Sundial dashboard can only detect wallet extensions that are installed in the same browser and have been set up (i.e., a wallet has been created or restored). Check that:
+
+    - Your wallet extension is installed and enabled in your browser's extensions panel.
+    - You have completed the wallet setup (created or imported a wallet) — an extension that is installed but has no wallet created will not be detected.
+    - You are using a supported browser (Chrome, Brave, Firefox, or Edge). Safari is not supported by most Cardano wallet extensions.
+
+    Try refreshing the dashboard page after installing or enabling the extension.
+  </Accordion>
+  <Accordion title="Wrong network error after connecting">
+    This error means your wallet is connected to a different network than the Sundial environment you are using. If you are on the testnet dashboard, your wallet must be on **Preprod / Testnet**. If you are on mainnet, your wallet must be on **Mainnet**.
+
+    Open your wallet extension, switch to the correct network, then disconnect and reconnect from the Sundial dashboard.
+  </Accordion>
+  <Accordion title="Transaction approval prompt not appearing">
+    When Sundial requests a transaction signature, your wallet extension should automatically open a prompt. If it does not:
+
+    - Check whether your browser is blocking pop-ups from the Sundial dashboard domain. Allow pop-ups for `sundialprotocol.com` in your browser settings.
+    - Check that your wallet extension is not minimized or hidden. Some wallets open as a separate window rather than a pop-up.
+    - Try clicking the wallet extension icon in your browser toolbar to bring it into focus.
+
+    If the prompt still does not appear, try disconnecting and reconnecting your wallet, then repeat the action.
+  </Accordion>
+  <Accordion title="Balance not refreshing after a transaction">
+    After completing a transaction, your displayed balance may not update immediately. This is a known issue on the testnet. Reload the dashboard page to force a fresh balance query. If the balance still appears incorrect after a reload, wait 30–60 seconds for the transaction to be processed by the node and reload again.
+  </Accordion>
+</AccordionGroup>

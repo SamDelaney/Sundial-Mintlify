@@ -1,0 +1,136 @@
+{
+  "projectType": "saas",
+  "projectName": "Sundial Protocol",
+  "projectDescription": "Sundial Protocol is a Bitcoin-native yield and Layer 2 infrastructure platform that enables high-throughput DeFi on Cardano through optimistic rollups, BTC staking scripts, and a cross-chain Charms bridge.",
+  "theme": "luma",
+  "primaryColor": "#604185",
+  "lightColor": "#ffffff",
+  "darkColor": "#7d1bef",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Overview",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "testnet-guide"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/l2-rollup",
+              "concepts/tokenomics",
+              "concepts/roles"
+            ]
+          },
+          {
+            "group": "Protocol Components",
+            "pages": [
+              "components/btc-staking",
+              "components/charms-bridge",
+              "components/alchemy",
+              "components/state-queue",
+              "components/fraud-proofs"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "User Guides",
+        "groups": [
+          {
+            "group": "Using Sundial",
+            "pages": [
+              "guides/connect-wallet",
+              "guides/stake-btc",
+              "guides/stake-ada",
+              "guides/withdraw",
+              "guides/faucet"
+            ]
+          },
+          {
+            "group": "Network Participants",
+            "pages": [
+              "guides/operators",
+              "guides/watchers",
+              "guides/facilitators"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Reference",
+        "groups": [
+          {
+            "group": "Node API",
+            "pages": [
+              "api/overview",
+              "api/transactions",
+              "api/utxos",
+              "api/blocks",
+              "api/faucet"
+            ]
+          },
+          {
+            "group": "SDKs & Libraries",
+            "pages": [
+              "sdk/midgard-sdk",
+              "sdk/btc-locker",
+              "sdk/midgard-ts"
+            ]
+          },
+          {
+            "group": "Operator Toolkit",
+            "pages": [
+              "operators/layer-node",
+              "operators/cli-reference",
+              "operators/configuration"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Optimistic rollup Layer 2 on Cardano targeting 2,000–5,000 TPS",
+    "Bitcoin staking via P2WSH timelock and escrow scripts (BTC Locker)",
+    "Charms cross-chain bridge using Groth16 zk-SNARK verification on Cardano",
+    "Alchemy FIRE/ICE reserve asset protocol backed by Bitcoin",
+    "Fraud-proof system with 27 fraud proof types and computation thread splitting",
+    "Financial dashboard supporting BTC and ADA staking with wallet integration",
+    "Testnet with sBTC faucet for developer and user onboarding",
+    "Watcher ecosystem: Provers, Facilitators, Archivists, and Canaries",
+    "Operator registry with VRF-based scheduling and collateral slashing",
+    "TypeScript off-chain SDK (@al-ft/midgard-sdk) for transaction construction"
+  ],
+  "publicApiSurface": [
+    "GET /health/live — Liveness probe",
+    "GET /health/ready — Readiness probe",
+    "POST /tx — Submit a transaction (hex CBOR)",
+    "GET /txs — Query transactions",
+    "GET /utxos — Query UTxO set",
+    "GET /block — Query block data",
+    "POST /submit — Submit raw hex CBOR transaction to L1",
+    "POST /faucet/claims — Claim testnet sBTC",
+    "GET /stateQueue — Query state queue",
+    "BTCLocker.createDepositTransaction() — Build BTC deposit PSBT",
+    "BTCLocker.createClaimTransaction() — Build BTC claim PSBT",
+    "BTCLocker.createDistributionTransaction() — Build BTC yield distribution PSBT",
+    "BTCLocker.createWithdrawalTransaction() — Build BTC withdrawal PSBT",
+    "BTCLocker.signTransaction() — Sign a PSBT",
+    "BTCLocker.submitTransaction() — Broadcast signed tx",
+    "midgard-sdk: deposit(), withdrawal(), txOrder() — L2 user event construction",
+    "midgard-sdk: fraudProofCatalogue — Fraud proof submission",
+    "User Actions API: POST /request, /order, /deposit, /withdraw, /escape-hatch",
+    "User Actions API: POST /bridges/transferIn, /bridges/transferOut",
+    "User Actions API: POST /stake/lock, /stake/unlock, /stake/update",
+    "User Actions API: GET /address/:address, /transaction/:txid, /schedule, /layer-operators",
+    "Sundial CLI: midgard wallet create/import/list/balance",
+    "Sundial CLI: midgard send, tx-lookup, node node-status"
+  ]
+}

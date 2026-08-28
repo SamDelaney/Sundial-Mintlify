@@ -1,72 +1,119 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
-  "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
+  "name": "Sundial Protocol",
+  "theme": "luma",
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "https://media.brand.dev/78049a0f-0343-487d-94f8-1c1e5e58c6ed.png",
+    "dark": "https://media.brand.dev/78049a0f-0343-487d-94f8-1c1e5e58c6ed.png"
+  },
+  "favicon": "https://media.brand.dev/723fb658-7b17-44e0-9fe7-c303979fc666.png",
+  "colors": {
+    "primary": "#604185",
+    "light": "#ffffff",
+    "dark": "#7d1bef"
+  },
+  "fonts": {
+    "heading": {
+      "family": "Fira Mono"
+    },
+    "body": {
+      "family": "Fira Mono"
+    }
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/sundial-protocol"
     }
   },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Overview",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "testnet-guide"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/l2-rollup",
+              "concepts/tokenomics",
+              "concepts/roles"
+            ]
+          },
+          {
+            "group": "Protocol Components",
+            "pages": [
+              "components/btc-staking",
+              "components/charms-bridge",
+              "components/alchemy",
+              "components/state-queue",
+              "components/fraud-proofs"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "User Guides",
+        "groups": [
+          {
+            "group": "Using Sundial",
+            "pages": [
+              "guides/connect-wallet",
+              "guides/stake-btc",
+              "guides/stake-ada",
+              "guides/withdraw",
+              "guides/faucet"
+            ]
+          },
+          {
+            "group": "Network Participants",
+            "pages": [
+              "guides/operators",
+              "guides/watchers",
+              "guides/facilitators"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Reference",
+        "groups": [
+          {
+            "group": "Node API",
+            "pages": [
+              "api/overview",
+              "api/transactions",
+              "api/utxos",
+              "api/blocks",
+              "api/faucet"
+            ]
+          },
+          {
+            "group": "SDKs & Libraries",
+            "pages": [
+              "sdk/midgard-sdk",
+              "sdk/btc-locker",
+              "sdk/midgard-ts"
+            ]
+          },
+          {
+            "group": "Operator Toolkit",
+            "pages": [
+              "operators/layer-node",
+              "operators/cli-reference",
+              "operators/configuration"
+            ]
+          }
+        ]
+      }
     ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
   }
 }

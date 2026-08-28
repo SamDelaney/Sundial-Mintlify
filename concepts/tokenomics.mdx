@@ -1,0 +1,164 @@
+---
+title: "Sundial Tokenomics: Bitcoin as the Native Asset"
+sidebarTitle: "Tokenomics"
+description: "Sundial Protocol uses wrapped Bitcoin (wBTC) as its universal unit of account. No new token is issued. Learn about Babel fees, staking collateral, and governance."
+---
+
+Sundial is one of the few Layer 2 protocols that introduces no new token. Bitcoin — in its native and wrapped forms — is the economic foundation of the entire system. Every fee, every operator bond, every governance vote, and every treasury reserve is denominated in BTC. This page explains what that means in practice for users, operators, and the protocol as a whole.
+
+## Core Principle: No New Token
+
+Most L2 networks launch a native token to bootstrap liquidity, pay validators, and fund governance. Sundial deliberately avoids this. Issuing a new token would dilute Bitcoin holders, introduce inflationary pressure, and create misaligned incentives between the token and the protocol's actual economic activity.
+
+Instead, Sundial uses **wrapped BTC (wBTC)** as its universal unit of account on the L2. Every transaction fee, collateral deposit, reward, and governance weight is anchored to Bitcoin's value. The result is a protocol whose long-term sustainability is tied directly to Bitcoin adoption — not to the success of a separate speculative asset.
+
+<Info>
+  "wBTC" in Sundial refers to the protocol-level wrapped Bitcoin standard used on the L2. Multiple Bitcoin representations (tBTC, iBTC, cbBTC, and others approved by governance) can be bridged in and are automatically normalized to this standard. You do not need to acquire a specific wrapped token before using Sundial.
+</Info>
+
+## Transaction Fees and Babel Fees
+
+Sundial's fee market is denominated in wBTC. However, you are not required to hold wBTC to pay fees. Sundial implements **Babel fees** — a mechanism that lets you pay transaction costs in virtually any supported bridged asset.
+
+When you submit a transaction, you specify which asset you want to use for fees. Sundial's integrated liquidity routes automatically convert that asset to wBTC at the protocol level before settlement. From your perspective, you pick the asset you already hold; the protocol handles the rest.
+
+<CardGroup cols={2}>
+  <Card title="BTC-Denominated Fee Market" icon="bitcoin">
+    All fees converge to wBTC, preserving a single unified fee market priced in Bitcoin. There is no fragmentation across competing fee tokens.
+  </Card>
+  <Card title="User Accessibility" icon="door-open">
+    You can start using Sundial with stablecoins, ADA, or any other supported bridged asset. No separate on-ramp to acquire wBTC first.
+  </Card>
+</CardGroup>
+
+Supported fee assets include BTC representations (tBTC, iBTC, cbBTC) and non-BTC tokens such as stablecoins. Governance determines which assets are added or removed from the supported list.
+
+## Operator Collateral and Slashing
+
+Layer Operators (block producers) must stake a collateral bond in wBTC before they can produce blocks. This bond is the economic guarantee that they will follow the protocol's rules.
+
+### How Collateral Works
+
+- Operators can deposit collateral in any supported asset. Sundial's Babel fee mechanism normalizes it to wBTC automatically.
+- The bond remains locked while the operator is active. Operators can exit and reclaim their bond by following the deregistration process.
+- The bond size is a governance-controlled parameter that reflects the security requirements of the network.
+
+### Slashing
+
+If a watcher submits a successful fraud proof against a block an operator produced:
+
+- **100% of the operator's bond** is transferred to the successful challenger as a reward.
+- The invalid block is rejected and removed from the state queue.
+- The operator is suspended and must re-stake to resume block production.
+
+Because the fraud-proof process is fully deterministic on Cardano's UTxO model, slashing is binary and unambiguous — there is no subjectivity or committee vote.
+
+<Warning>
+  As an operator, never submit a block you have not fully validated. The fraud-proof system is designed so that any single honest watcher can catch and penalize a dishonest block with certainty.
+</Warning>
+
+### Fraud-Proof Challenge Bonds
+
+When a watcher (Prover) submits a fraud proof, they also post a small challenge bond:
+
+- **Successful challenge** — the operator's bond is slashed and the watcher earns the full bounty in wBTC.
+- **Failed challenge** — the watcher's challenge bond is forfeited to the protocol treasury. This deters spam challenges and protects operators from griefing.
+
+## Watcher Incentives
+
+The four watcher roles each have distinct incentive structures, all denominated in wBTC:
+
+<Accordion title="Provers — Fraud Proof Bounties + Proof of Diligence">
+  Provers earn rewards in two ways:
+
+  1. **Fraud proof bounty** — if a Prover successfully challenges an invalid block, they receive 100% of the offending operator's bond. Because block production is deterministic, genuine faults are rare, but when they occur the bounty is substantial.
+  2. **Proof of Diligence (PoD) payments** — small, consistent rewards paid to Provers for actively verifying proposed blocks, even when no fault is found. PoD ensures Provers are sustainably compensated for their ongoing work, not just for catching the occasional bad actor.
+</Accordion>
+
+<Accordion title="Facilitators — Fee Spread on Accelerated Transfers">
+  Facilitators front liquidity for users who want immediate deposits or withdrawals without waiting for the full challenge window. In return, they charge a fee spread — the difference between what the user pays for speed and the actual on-chain transaction cost.
+
+  Facilitator transactions are frequent but the spread per transaction is small, so volume is the key driver of profitability. Facilitators compete for orders, keeping fees competitive for users.
+</Accordion>
+
+<Accordion title="Archivists — Data Access Fees">
+  Archivists store complete historical block data and charge fees for access. Demand is driven by other protocol services, analytics applications, and fraud-proof preparation. Archivists set their own fees based on data availability and access demand.
+</Accordion>
+
+<Accordion title="Canaries — Subscription Fees">
+  Canaries provide customized, opt-in monitoring services to users or dApps that want additional security coverage. Canaries set their own fee schedules and terms of service. Users who want a personal "early warning" about any anomalies affecting their funds can subscribe to a Canary's service.
+</Accordion>
+
+## Governance: One Satoshi, One Vote
+
+wBTC holders govern Sundial's core protocol parameters. The governance model follows a **"one satoshi, one vote"** principle — the smallest indivisible unit of Bitcoin is the voting unit. This design has two important properties:
+
+- **Broad participation** — even small BTC holders have a proportional voice, not just large capital allocators.
+- **Aligned incentives** — governance power is held by those with the most to gain or lose from the protocol's performance.
+
+Parameters subject to governance include:
+
+- Operator bond size
+- Challenge window duration
+- Fee splits between protocol treasury and participants
+- Approved BTC representations and bridges
+- Yield strategy whitelist
+
+## Treasury and Genesis Reserve
+
+The Sundial treasury is entirely denominated in BTC and its wrapped equivalents — making it one of the few DeFi protocols whose reserves directly inherit Bitcoin's monetary properties.
+
+### Genesis Reserve
+
+At launch, Sundial establishes a **Genesis Reserve**: an initial tranche of BTC bridged into the protocol to serve as its economic foundation.
+
+<CardGroup cols={2}>
+  <Card title="Security Backbone" icon="shield">
+    Seeds initial operator bonds so the first cohort of block producers can participate without prohibitive capital requirements.
+  </Card>
+  <Card title="Fraud-Proof Incentive Pool" icon="magnifying-glass">
+    Allocates genesis BTC to reward early Provers and Canaries, ensuring fraud detection is economically viable from day one.
+  </Card>
+  <Card title="Liquidity Bootstrap" icon="droplet">
+    Funds early liquidity pools, enabling smooth conversion between supported BTC representations and reducing slippage for DeFi users.
+  </Card>
+  <Card title="Insurance Layer" icon="umbrella">
+    Provides a capital buffer against potential bridge risks or unforeseen incidents during Sundial's bootstrapping phase.
+  </Card>
+</CardGroup>
+
+### Ongoing Reserve Growth
+
+The treasury does not rely on token minting or emissions. Reserves grow through real network usage:
+
+- **Protocol fees** — a portion of transaction and bridge fees flows directly into the treasury.
+- **Slashed bonds** — after rewarding successful challengers, any remainder goes to the treasury.
+- **Yield strategies** — treasury reserves are deployed into vetted BTC yield opportunities (staking, restaking with trusted partners). Any rewards denominated in non-BTC assets are automatically converted to wBTC via Babel fees, ensuring the treasury remains 100% BTC-denominated at all times.
+
+<Note>
+  Sundial's treasury growth is strictly tied to real adoption. There are no scheduled token unlocks, no inflation schedule, and no foundation allocation that dilutes your holdings.
+</Note>
+
+## Multi-Chain BTC Integration
+
+Sundial supports multiple Bitcoin representations to maximize liquidity and minimize fragmentation. Admission to the supported asset list requires governance approval and must meet strict criteria:
+
+- Full peg to native BTC with robust economic guarantees.
+- Ample on-chain liquidity to support seamless wBTC conversion.
+- Ability to redeem back to native BTC or the user's preferred representation on exit.
+
+Governance can add or remove representations as the broader Bitcoin ecosystem evolves.
+
+## Related Pages
+
+<CardGroup cols={3}>
+  <Card title="Network Roles" icon="users" href="/concepts/roles">
+    How operators, watchers, and liquidity providers earn rewards
+  </Card>
+  <Card title="L2 Rollup" icon="layer-group" href="/concepts/l2-rollup">
+    How fraud proofs and the challenge window protect your funds
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    The full 7-layer protocol stack and where fees flow
+  </Card>
+</CardGroup>

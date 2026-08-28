@@ -1,0 +1,115 @@
+---
+title: "Withdraw Funds from Sundial: L2 and BTC Exits"
+sidebarTitle: "Withdraw"
+description: "Withdraw ADA from the Sundial L2 or BTC from the staking protocol. Covers standard withdrawals, accelerated Facilitator exits, and the escape hatch."
+---
+
+Sundial has two distinct withdrawal paths depending on which asset you are moving. **ADA withdrawals** move your funds from the Sundial Midgard Layer 2 back to your Cardano L1 wallet and go through a maturity window enforced by the optimistic rollup's fraud proof mechanism. **BTC withdrawals** sweep your Bitcoin principal and yield from the on-chain timelock and escrow scripts back to your Bitcoin wallet after your staking deadline. Choose the path that matches your asset below.
+
+---
+
+## ADA / L2 Withdrawals
+
+When you withdraw ADA from the Sundial L2, your funds travel through the settlement queue and must reach maturity before they are available on Cardano L1. This maturity window is the fraud proof challenge period — it gives Watchers time to verify the withdrawal is valid against the finalized L2 state.
+
+### Standard Withdrawal
+
+A standard withdrawal gives you full self-custody control with no additional fees beyond the Cardano network transaction fee. You wait out the maturity window yourself.
+
+<Steps>
+  <Step title="Open the Withdraw tab">
+    Navigate to the Sundial dashboard at [sundialprotocol.com/dashboard](https://www.sundialprotocol.com/dashboard) and click the **Withdraw** tab. Your withdrawable L2 balances appear in the list.
+  </Step>
+  <Step title="Enter the withdrawal amount">
+    Select the asset and enter the amount you want to withdraw, or click **Max** to withdraw your full available balance. The dashboard displays the Cardano network fee and the estimated time until funds arrive on L1.
+  </Step>
+  <Step title="Submit the withdrawal order on L2">
+    Click **Withdraw** and approve the transaction in your Cardano wallet extension. This submits a withdrawal order to the Sundial L2 block producer, who includes it in a block and posts it to the settlement queue on Cardano L1.
+  </Step>
+  <Step title="Wait for the block to reach maturity">
+    Your withdrawal order is locked in the settlement queue. Once the block containing your withdrawal order has passed the challenge period without a successful fraud proof, it reaches maturity and your funds become claimable.
+
+    You can monitor the status of your withdrawal in the **Portfolio** tab — it shows whether your withdrawal is pending, in the challenge window, or ready to claim.
+  </Step>
+  <Step title="Claim settled funds on Cardano L1">
+    When your withdrawal reaches maturity, the Portfolio tab shows a **Claim** button next to the settled amount. Click **Claim** and approve the transaction in your wallet. Your ADA arrives in your Cardano L1 wallet.
+  </Step>
+</Steps>
+
+### Accelerated Withdrawal via Facilitators
+
+If you need your ADA on Cardano L1 immediately, a **Facilitator** can front you the funds right away in exchange for a small service fee. The Facilitator then waits out the maturity window and collects the settled amount when it becomes available.
+
+<Steps>
+  <Step title="Check active Facilitators">
+    From the Sundial dashboard, check the **Network** status panel to see which Facilitators are currently active and accepting requests. Each Facilitator may publish their own fee rate.
+  </Step>
+  <Step title="Request an accelerated withdrawal">
+    In the **Withdraw** tab, select the **Accelerated** option. Choose an active Facilitator from the list. The dashboard shows the Facilitator's fee and the net amount you will receive immediately on L1.
+  </Step>
+  <Step title="Pay the fee and receive funds">
+    Approve the accelerated withdrawal transaction in your wallet. The Facilitator sends you the net ADA amount on Cardano L1 immediately. The Facilitator then holds your withdrawal order and claims the full settled amount from the state queue once the maturity window elapses.
+  </Step>
+</Steps>
+
+<Note>
+  Facilitator fees vary and are set by each Facilitator independently. Compare rates in the Network panel before committing to an accelerated withdrawal. For the full breakdown of how Facilitators work, see the [Facilitators guide](/guides/facilitators).
+</Note>
+
+### Escape Hatch (Emergency Exit)
+
+If block production on the Sundial L2 stops and no Operator is producing new blocks, you can use the **escape hatch** to exit the L2 directly. The escape hatch lets you withdraw your funds to Cardano L1 without waiting for a Facilitator or a block producer to process your withdrawal order.
+
+<Warning>
+  The escape hatch is an emergency measure and should only be used if the L2 is genuinely non-operational. Using it under normal conditions is unnecessary and will incur a higher transaction fee. If block production is active, use the standard or accelerated withdrawal path instead.
+</Warning>
+
+To use the escape hatch, navigate to **Withdraw** → **Emergency Exit** in the dashboard, confirm the action, and approve the transaction in your wallet. The escape hatch transaction posts your exit directly to the Cardano L1 settlement contract, bypassing the normal block production flow.
+
+---
+
+## BTC Withdrawals
+
+BTC withdrawals apply to funds locked in Sundial's BTC Locker protocol — your principal held in the timelock script and any yield distributed to that same address by the yield provider.
+
+### When You Can Withdraw
+
+You can withdraw your BTC after your **staking deadline** has passed. The withdrawal transaction is enforced on-chain by `OP_CHECKLOCKTIMEVERIFY` — Bitcoin nodes will reject the transaction if it is broadcast before the deadline.
+
+### Standard BTC Withdrawal
+
+<Steps>
+  <Step title="Open the Withdraw tab after your deadline">
+    Navigate to **Dashboard** → **Withdraw** tab. Staking positions whose deadline has passed appear with a **Withdraw** button. Positions that have not yet reached their deadline are shown as locked.
+  </Step>
+  <Step title="Review the withdrawal details">
+    The dashboard shows the total withdrawable amount, which includes:
+    - Your original deposit (timelock UTXO)
+    - Any yield distributed to the timelock address by the provider
+    - Any remaining funds in the escrow UTXO (if the provider did not fully sweep it)
+
+    Confirm the destination address — funds are sent to the Bitcoin address registered at deposit time.
+  </Step>
+  <Step title="Sign and broadcast the withdrawal PSBT">
+    Click **Withdraw**. Your Bitcoin wallet presents the withdrawal PSBT for review. This single transaction spends both the timelock UTXO and any remaining escrow UTXO simultaneously. Sign and broadcast the transaction from your wallet.
+  </Step>
+</Steps>
+
+<Warning>
+  Withdraw promptly after your deadline. There is a brief window after the deadline during which both you and the yield provider can independently spend the escrow UTXO via the post-deadline reclaim path. Initiating your withdrawal as soon as the deadline passes eliminates any race condition risk.
+</Warning>
+
+---
+
+## Minimum Amounts and Fees
+
+<Note>
+  Both withdrawal types require a minimum amount sufficient to cover transaction fees:
+
+  - **ADA withdrawals** require enough ADA to pay the Cardano network fee for the claim transaction. Amounts below the network fee cannot be submitted.
+  - **BTC withdrawals** require enough BTC to cover the Bitcoin network fee. The fee estimate is shown in the dashboard before you sign.
+
+  Very small staking positions may not be economically viable to withdraw if the fee exceeds the balance. Check the fee breakdown in the dashboard before initiating a withdrawal.
+</Note>
+
+For a deeper explanation of how the settlement queue and maturity window work, see [State Queue and Finality](/components/state-queue).

@@ -1,0 +1,300 @@
+---
+title: "Become a Sundial Watcher: Provers, Archivists & Canaries"
+sidebarTitle: "Watchers"
+description: "Watchers monitor the Sundial L2 for integrity and earn rewards. Learn about the four watcher roles — Prover, Facilitator, Archivist, and Canary — and how to participate."
+---
+
+Watchers are the security backbone of Sundial. While Operators produce blocks, it is Watchers who verify them — monitoring the L2 continuously, detecting invalid state transitions, and earning rewards for honest participation. Unlike Operators, Watchers require no upfront collateral to begin participating, making the role accessible to anyone willing to run the software. Most experienced participants run all four Watcher roles in tandem, since the core infrastructure is shared and the combined expected rewards comfortably exceed the combined operating costs.
+
+## The Four Watcher Roles
+
+<CardGroup cols={2}>
+  <Card title="Provers" icon="magnifying-glass">
+    Monitor the state queue for invalid blocks and submit fraud proofs. Earn the Operator's full bond on a successful challenge, plus Proof of Diligence rewards for ongoing monitoring.
+  </Card>
+  <Card title="Facilitators" icon="bolt">
+    Front liquidity for instant user deposits and withdrawals, then claim the L2 funds once the maturity period clears. Earn the fee spread on every transaction you facilitate.
+  </Card>
+  <Card title="Archivists" icon="database">
+    Store confirmed L2 block bodies and serve historical data via a standard API. Earn access fees from users and applications querying your archive.
+  </Card>
+  <Card title="Canaries" icon="bell">
+    Provide opt-in L2 monitoring as a subscription service. Users pay you to watch for fraud and anomalies on their behalf. You set your own fees and service terms.
+  </Card>
+</CardGroup>
+
+---
+
+## Provers
+
+Provers are the primary fraud-detection mechanism for the Sundial L2. When an Operator submits a block header to the state queue, Provers independently re-validate every transaction in that block. If a block violates any protocol rule, a Prover can construct and submit a fraud proof on-chain and claim the Operator's full wBTC bond as a bounty.
+
+<Tabs>
+  <Tab title="How It Works">
+    The Prover service runs autonomously after initial configuration. For each fraud proof type, it:
+
+    1. Monitors the state queue and the Data Availability Layer (DAL) for the specific violation condition
+    2. Generates the necessary proof data
+    3. Submits the proof to the correct on-chain contract
+    4. Submits any subsequent transactions required to advance the proof challenge
+    5. Claims the bounty automatically on success
+    6. Terminates gracefully if interrupted or if an error occurs
+
+    You only need to intervene to start the service and configure your on-chain credentials.
+  </Tab>
+  <Tab title="Fraud Proof Types">
+    There are 27 defined fraud proof types across seven categories. The Prover service monitors for all of them.
+
+    <Accordion title="Inputs (6 types)">
+      | Type | Condition |
+      |---|---|
+      | `NO-INPUT` | Transaction attempted to spend a UTxO that does not exist or was already spent in a previous block |
+      | `INPUT-NO-IDX` | Transaction attempted to spend an input index that does not exist at all |
+      | `WITHDRAWN-INPUT` | Transaction attempted to spend an input that was already consumed by a withdrawal |
+      | `DOUBLE-SPEND` | Transaction attempted to spend an input already spent by another transaction in the same block |
+      | `DOUBLE-WITHDRAW` | A withdrawal attempted to spend an input that was already withdrawn by a prior withdrawal |
+      | `ZERO-INPUT` | A transaction in the ledger has zero inputs |
+    </Accordion>
+
+    <Accordion title="Validity Range (1 type)">
+      | Type | Condition |
+      |---|---|
+      | `INVALID-RANGE` | Transaction's time-validity range does not overlap with its block's event interval |
+    </Accordion>
+
+    <Accordion title="Fees (1 type)">
+      | Type | Condition |
+      |---|---|
+      | `MIN-FEE` | Transaction fee is below the calculated minimum fee |
+    </Accordion>
+
+    <Accordion title="Signatures (4 types)">
+      | Type | Condition |
+      |---|---|
+      | `MISSING-REQ-SIGNER` | Transaction is missing a required signer |
+      | `NON-REQ-SIGNER` | Transaction includes an extra, non-required signer |
+      | `INVALID-SIGNER` | Transaction contains an invalid signer |
+      | `MISSING-SIGNATURE` | A required signature is absent |
+    </Accordion>
+
+    <Accordion title="Native Scripts (2 types)">
+      | Type | Condition |
+      |---|---|
+      | `MISSING-NATIVE-SCRIPT` | A required script is missing |
+      | `NATIVE-SCRIPT-INVALID` | Native script validation fails |
+    </Accordion>
+
+    <Accordion title="Value (5 types)">
+      | Type | Condition |
+      |---|---|
+      | `VALUE-NOT-PRESERVED` | Transaction does not preserve total value |
+      | `ADA-MINTED` | Transaction attempts to mint ADA |
+      | `NEGATIVE-OUTPUT-VALUE` | Transaction output has a negative value |
+      | `MIN-SAT-TX` | Transaction output does not meet the minimum Satoshi value |
+      | `MIN-SAT-UTXO` | A UTxO in the block's UTxO set does not meet the minimum Satoshi value |
+    </Accordion>
+
+    <Accordion title="Network ID (3 types)">
+      | Type | Condition |
+      |---|---|
+      | `OUTPUT-NETWORK-UTXO` | UTxO address has the wrong network ID |
+      | `OUTPUT-NETWORK-TX` | Transaction output has the wrong network ID |
+      | `TRANSACTION-NETWORK` | Transaction itself carries the wrong network ID |
+    </Accordion>
+
+    <Accordion title="Reference Inputs (2 types)">
+      | Type | Condition |
+      |---|---|
+      | `NO-REFERENCE-INPUT` | Transaction referenced a UTxO that does not exist or was spent |
+      | `REFERENCE-INPUT-NO-IDX` | Referenced input index was not produced by the matching transaction hash |
+    </Accordion>
+  </Tab>
+  <Tab title="Incentives">
+    Prover incentives are designed around two complementary reward streams:
+
+    **Bounty rewards** — when you successfully prove a fraud, you claim the Operator's entire wBTC bond. Because block production is deterministic and cheating is economically irrational for Operators, successful challenges are rare. The bond is sized to make the potential payout significant when one does occur.
+
+    **Proof of Diligence (PoD) rewards** — to ensure Provers are incentivised to monitor consistently even in the absence of fraud, Sundial implements a PoD system. You receive small but regular payments simply for verifying proposed blocks. These ongoing rewards cover operating costs and keep the Prover set healthy.
+
+    The expected payout model:
+
+    ```text
+    E[Payout_Pr] = (λ_fault + π_win) · Bounty
+                 + PoD_Payment
+                 − C_operation
+                 − C_capital
+    ```
+
+    Where `λ_fault` is the probability of a fault, `π_win` is the probability of winning the bounty race, and `PoD_Payment` is the sum of regular diligence payments.
+  </Tab>
+</Tabs>
+
+---
+
+## Archivists
+
+Archivists store the full bodies of confirmed L2 blocks. On Cardano L1, only block headers are committed — the complete block data lives with Archivists. Because every confirmed state UTxO on Sundial contains a chained header hash, there can be no disagreement about the correctness of archived data: a block body either matches the on-chain header hash or it does not.
+
+Most L2 Operators and subscription-service indexers run their own Archivist node, since local access to historical block data significantly speeds up block construction and data queries.
+
+### Archive API
+
+Archivist nodes expose a standard REST API for block retrieval:
+
+<CodeGroup>
+```http By Height
+GET /block/{blockHeight}
+GET /block/{blockHeight}/header
+GET /block/{blockHeight}/body
+GET /blocks?from={startHeight}&to={endHeight}
+```
+
+```http By Hash
+GET /block/{blockHash}
+GET /block/{blockHash}/header
+GET /block/{blockHash}/body
+```
+</CodeGroup>
+
+### Incentives
+
+Archivists earn access fees from users and applications that query their nodes. You set your own fee schedule. The sustainability condition is straightforward:
+
+```text
+E[Payout_Ar] = λ_access · Fee − C_operation − C_capital
+```
+
+Where `λ_access` is the number of data access requests you serve. High-demand networks and well-connected nodes attract more queries.
+
+---
+
+## Canaries
+
+Canaries are a broad L2 monitoring service that users opt into on a subscription basis. As a Canary operator, you monitor the network on behalf of paying users — watching for fraud, anomalies, and unexpected state changes — and alert them when something looks wrong. You define your own monitoring scope, fee structure, and service terms.
+
+The Watcher Toolkit exposes four observation APIs you can consume to build your Canary service:
+
+<CardGroup cols={2}>
+  <Card title="Archive Node API" icon="clock-rotate-left">
+    Access full historical block data for deep analysis and trend detection.
+  </Card>
+  <Card title="Indexer APIs" icon="list-check">
+    Monitor the state queue, settlement queue, DAL, and Scheduler in real time.
+  </Card>
+  <Card title="Layer Node API" icon="server">
+    Connect directly to a Layer Node to inspect internal state and catch discrepancies early.
+  </Card>
+  <Card title="Custom APIs" icon="plug">
+    Build integrations with other network participants to gather domain-specific data.
+  </Card>
+</CardGroup>
+
+### Incentives
+
+Canaries earn subscription fees. Because you control your own service terms, your revenue model is flexible:
+
+```text
+E[Payout_Ca] = λ_sub · Fee − C_operation
+```
+
+Where `λ_sub` is the number of active subscriptions. Canaries that demonstrate a strong track record of accurate monitoring will naturally attract more subscribers.
+
+---
+
+## Facilitators
+
+Facilitators accelerate deposits and withdrawals for users by fronting liquidity immediately and waiting for the L2 maturity period themselves. This is covered in detail in its own guide.
+
+<Card title="Facilitator Guide" icon="bolt" href="/guides/facilitators">
+  Learn how to register, stake, and earn fees as a Facilitator — including the full registration TypeScript schema and capital requirements.
+</Card>
+
+---
+
+## Proof of Diligence
+
+The Proof of Diligence (PoD) system is the mechanism that keeps Provers actively monitoring even during quiet periods when no fraud is occurring. Without PoD, Provers would only earn when they catch a fault — making the role economically marginal during stable operation.
+
+Under PoD, the protocol distributes small, consistent rewards to Provers for each block they successfully verify. These payments are sized so that the sum of PoD rewards plus expected bounty earnings exceeds a Prover's operating costs. The result is a sustained, well-resourced Prover set that keeps the network honest at all times — not just when something goes wrong.
+
+<Note>
+The specific PoD payment rate and bounty sizing are calibrated to ensure the Prover set remains adequately staffed even at low fault rates. See the tokenomics documentation for the full incentive math.
+</Note>
+
+---
+
+## Getting Started
+
+<Steps>
+  <Step title="Install the Watcher Toolkit">
+    The Watcher Toolkit includes reference implementations for all four roles, ready to deploy as-is or use as a starting point for custom builds. Clone the repository and check out the latest tagged release.
+
+    ```bash
+    git clone https://github.com/IntersectMBO/sundial-watcher-toolkit
+    cd sundial-watcher-toolkit
+    git switch -d tags/<TAGGED_VERSION>
+    ```
+  </Step>
+  <Step title="Choose your roles">
+    Most Watchers run Prover + Archivist + Canary together, since the shared infrastructure makes the marginal cost of adding each role low. Facilitators require separate liquidity capital — see the Facilitator guide if you plan to add that role.
+  </Step>
+  <Step title="Configure credentials">
+    Set your on-chain signing credentials and the Sundial testnet RPC endpoint. The Prover and Facilitator services need on-chain access to submit proofs and register transactions.
+
+    ```json
+    {
+      "node": {
+        "endpoint": "https://rpc.testnet.sundialprotocol.com"
+      },
+      "logging": {
+        "level": "info",
+        "format": "json"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Start the services">
+    Launch each service independently. After startup, all monitoring, proof generation, and on-chain submission is handled automatically.
+
+    ```bash
+    # Start the Prover
+    sundial-watcher prover --config ./config.json
+
+    # Start the Archivist
+    sundial-watcher archivist --config ./config.json
+
+    # Start the Canary
+    sundial-watcher canary --config ./config.json
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Combined Economics
+
+Running all four Watcher roles in tandem is designed to be more economical than running each in isolation, since the core watcher service infrastructure is shared. The combined sustainability condition is:
+
+```text
+E[Payout_Total] = E[Payout_Pr] + E[Payout_Fa] + E[Payout_Ca] + E[Payout_Ar]
+                − C_operation (shared)
+                − C_capital (shared)
+> 0
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Fraud Proof Details" icon="shield-check" href="/components/fraud-proofs">
+    Deep dive into the 27 fraud proof types, on-chain contracts, and the challenge lifecycle.
+  </Card>
+  <Card title="Tokenomics & Incentives" icon="coins" href="/concepts/tokenomics">
+    Full incentive mathematics for all Watcher roles, including PoD payment calibration.
+  </Card>
+  <Card title="Facilitator Guide" icon="bolt" href="/guides/facilitators">
+    Detailed guide to registering and operating as a Facilitator.
+  </Card>
+  <Card title="Operator Guide" icon="server" href="/guides/operators">
+    Thinking about also running a block-producing node? See the Operator guide.
+  </Card>
+</CardGroup>
