@@ -6,7 +6,7 @@
     "light": "/logo/sundial.svg",
     "dark": "/logo/sundial.svg"
   },
-  "favicon": "https://media.brand.dev/723fb658-7b17-44e0-9fe7-c303979fc666.png",
+  "favicon": "/images/favicon.png",
   "colors": {
     "primary": "#604185",
     "light": "#ffffff",
