@@ -3,8 +3,8 @@
   "name": "Sundial Protocol",
   "theme": "luma",
   "logo": {
-    "light": "https://media.brand.dev/78049a0f-0343-487d-94f8-1c1e5e58c6ed.png",
-    "dark": "https://media.brand.dev/78049a0f-0343-487d-94f8-1c1e5e58c6ed.png"
+    "light": "/logo/sundial.svg",
+    "dark": "/logo/sundial.svg"
   },
   "favicon": "https://media.brand.dev/723fb658-7b17-44e0-9fe7-c303979fc666.png",
   "colors": {
